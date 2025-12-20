@@ -36,7 +36,7 @@ import mainStreet from '@/assets/parks/main-street.jpg';
 import waterPark from '@/assets/parks/water-park.jpg';
 import heroBg from '@/assets/hero-bg.jpg';
 import merchandiseCollection from '@/assets/merchandise-collection.jpg';
-import familyShopping from '@/assets/family-shopping.jpg';
+import teamShopping from '@/assets/team-shopping.png';
 
 // Park gallery data
 const parkGallery = [
@@ -314,8 +314,8 @@ export default function HomePage() {
               className="relative rounded-3xl overflow-hidden shadow-elevated"
             >
               <img 
-                src={familyShopping} 
-                alt="Happy family shopping at theme park" 
+                src={teamShopping} 
+                alt="Our team shopping at Disney World" 
                 className="w-full h-auto"
                 loading="lazy"
               />

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { SectionHeading } from '@/components/SectionHeading';
 import { Heart, Users, Award, MapPin } from 'lucide-react';
+import teamShopping from '@/assets/team-shopping.png';
 
 const values = [
   {
@@ -54,11 +55,12 @@ export default function AboutPage() {
               transition={{ duration: 0.6 }}
               viewport={{ once: true }}
             >
-              <div className="aspect-square rounded-3xl bg-secondary flex items-center justify-center overflow-hidden">
-                <div className="text-center p-8">
-                  <Users className="w-24 h-24 text-gold mx-auto mb-4" />
-                  <p className="text-muted-foreground">Family Photo Coming Soon</p>
-                </div>
+              <div className="rounded-3xl overflow-hidden shadow-elevated">
+                <img 
+                  src={teamShopping} 
+                  alt="Our team shopping at Disney World" 
+                  className="w-full h-auto object-cover"
+                />
               </div>
             </motion.div>
 
