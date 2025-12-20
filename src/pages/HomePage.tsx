@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import castleFireworks from '@/assets/parks/castle-fireworks.jpg';
 import epcotSphere from '@/assets/parks/epcot-sphere.jpg';
 import wizardCastle from '@/assets/parks/wizard-castle.jpg';
-import rollerCoaster from '@/assets/parks/roller-coaster.jpg';
+import seaworldShopping from '@/assets/parks/seaworld-shopping.jpg';
 import mainStreet from '@/assets/parks/main-street.jpg';
 import waterPark from '@/assets/parks/water-park.jpg';
 import heroBg from '@/assets/hero-bg.jpg';
@@ -43,7 +43,7 @@ const parkGallery = [
   { image: castleFireworks, title: 'Magic Kingdom', park: 'Disney World', span: 'col-span-2 row-span-2' },
   { image: epcotSphere, title: 'EPCOT', park: 'Disney World', span: '' },
   { image: wizardCastle, title: 'Wizarding World', park: 'Universal', span: '' },
-  { image: rollerCoaster, title: 'Thrilling Rides', park: 'SeaWorld', span: '' },
+  { image: seaworldShopping, title: 'SeaWorld Shop', park: 'SeaWorld', span: '' },
   { image: mainStreet, title: 'Main Street Shopping', park: 'Disney World', span: '' },
   { image: waterPark, title: 'Aquatica', park: 'SeaWorld', span: '' },
 ];
