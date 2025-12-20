@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Facebook, Instagram, Mail } from 'lucide-react';
+import { Facebook, Instagram, Mail, CreditCard, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
@@ -103,10 +103,13 @@ export function Footer() {
               ))}
               <li>
                 <a
-                  href="#"
-                  className="text-primary-foreground/70 hover:text-gold transition-colors text-sm"
+                  href="https://portal.enchantedparkpickups.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-foreground/70 hover:text-gold transition-colors text-sm inline-flex items-center gap-1"
                 >
                   Customer Portal Login
+                  <ExternalLink className="w-3 h-3" />
                 </a>
               </li>
             </ul>
@@ -139,10 +142,23 @@ export function Footer() {
         <div className="container-wide py-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-primary-foreground/60">
             <p>© {new Date().getFullYear()} Enchanted Park Pickups. All rights reserved.</p>
-            <p>
-              Not affiliated with Disney, Universal, or SeaWorld.
-            </p>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-primary-foreground/60">
+                <span>We accept:</span>
+                <div className="flex items-center gap-1 bg-[#0070BA] text-white px-2 py-1 rounded text-xs font-semibold">
+                  <CreditCard className="w-3 h-3" />
+                  PayPal
+                </div>
+              </div>
+              <span className="hidden md:inline">•</span>
+              <p className="hidden md:block">
+                Not affiliated with Disney, Universal, or SeaWorld.
+              </p>
+            </div>
           </div>
+          <p className="md:hidden text-center mt-2 text-sm text-primary-foreground/60">
+            Not affiliated with Disney, Universal, or SeaWorld.
+          </p>
         </div>
       </div>
     </footer>

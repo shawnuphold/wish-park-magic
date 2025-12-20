@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ParkBadge } from '@/components/ParkBadge';
 import { useCart, CartItem } from '@/hooks/useCart';
 import { toast } from 'sonner';
-import { ShoppingCart, X, Plus, Minus, Filter } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Filter, CreditCard } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { PayPalCheckout } from '@/components/PayPalCheckout';
 
 // Sample products data
 const products: Omit<CartItem, 'quantity'>[] = [
@@ -84,7 +85,21 @@ export default function ShopPage() {
   const { items, addItem, removeItem, updateQuantity, total, clearCart } = useCart();
   const [parkFilter, setParkFilter] = useState<string>('all');
   const [cartOpen, setCartOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  const handlePayPalSuccess = (orderId: string, transactionId: string) => {
+    console.log('PayPal Order ID:', orderId);
+    console.log('Transaction ID:', transactionId);
+    // Here you would typically store the order in your database
+    clearCart();
+    toast.success('Payment successful! Thank you for your order.');
+  };
+
+  const handleProceedToCheckout = () => {
+    setCartOpen(false);
+    setCheckoutOpen(true);
+  };
 
   const filteredProducts = products.filter(
     (product) => parkFilter === 'all' || product.park === parkFilter
@@ -214,8 +229,14 @@ export default function ShopPage() {
                       <p className="text-sm text-muted-foreground">
                         Taxes and shipping calculated at checkout
                       </p>
-                      <Button variant="gold" className="w-full" size="lg">
-                        Proceed to Checkout
+                      <Button 
+                        variant="gold" 
+                        className="w-full" 
+                        size="lg"
+                        onClick={handleProceedToCheckout}
+                      >
+                        <CreditCard className="w-5 h-5 mr-2" />
+                        Pay with PayPal
                       </Button>
                       <Button
                         variant="ghost"
@@ -282,6 +303,15 @@ export default function ShopPage() {
           )}
         </div>
       </section>
+
+      {/* PayPal Checkout Dialog */}
+      <PayPalCheckout
+        items={items}
+        total={total}
+        onSuccess={handlePayPalSuccess}
+        onClose={() => setCheckoutOpen(false)}
+        open={checkoutOpen}
+      />
     </main>
   );
 }
