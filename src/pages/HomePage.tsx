@@ -27,6 +27,24 @@ import {
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+// Park images
+import castleFireworks from '@/assets/parks/castle-fireworks.jpg';
+import epcotSphere from '@/assets/parks/epcot-sphere.jpg';
+import wizardCastle from '@/assets/parks/wizard-castle.jpg';
+import rollerCoaster from '@/assets/parks/roller-coaster.jpg';
+import mainStreet from '@/assets/parks/main-street.jpg';
+import waterPark from '@/assets/parks/water-park.jpg';
+
+// Park gallery data
+const parkGallery = [
+  { image: castleFireworks, title: 'Magic Kingdom', park: 'Disney World', span: 'col-span-2 row-span-2' },
+  { image: epcotSphere, title: 'EPCOT', park: 'Disney World', span: '' },
+  { image: wizardCastle, title: 'Wizarding World', park: 'Universal', span: '' },
+  { image: rollerCoaster, title: 'Thrilling Rides', park: 'SeaWorld', span: '' },
+  { image: mainStreet, title: 'Main Street Shopping', park: 'Disney World', span: '' },
+  { image: waterPark, title: 'Aquatica', park: 'SeaWorld', span: '' },
+];
+
 // Steps data
 const steps = [
   { number: 1, title: 'Request', description: 'Send us your wishlist via Facebook Messenger with photos and details.' },
@@ -185,8 +203,42 @@ export default function HomePage() {
         </motion.div>
       </section>
 
-      {/* How It Works */}
+      {/* Park Gallery */}
       <section className="section-padding bg-background">
+        <div className="container-wide">
+          <SectionHeading 
+            title="Parks We Visit" 
+            subtitle="We shop at all three major Orlando theme park resorts so you can get merchandise from anywhere."
+          />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-[200px] md:auto-rows-[250px]">
+            {parkGallery.map((item, i) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                viewport={{ once: true }}
+                className={`relative rounded-2xl overflow-hidden group cursor-pointer ${item.span}`}
+              >
+                <img 
+                  src={item.image} 
+                  alt={item.title}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
+                  <span className="text-gold text-xs font-medium uppercase tracking-wider">{item.park}</span>
+                  <h3 className="font-heading text-lg md:text-xl font-bold text-primary-foreground">{item.title}</h3>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="section-padding bg-secondary">
         <div className="container-wide">
           <SectionHeading 
             title="How It Works" 
