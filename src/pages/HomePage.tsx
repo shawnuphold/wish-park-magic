@@ -34,6 +34,9 @@ import wizardCastle from '@/assets/parks/wizard-castle.jpg';
 import rollerCoaster from '@/assets/parks/roller-coaster.jpg';
 import mainStreet from '@/assets/parks/main-street.jpg';
 import waterPark from '@/assets/parks/water-park.jpg';
+import heroBg from '@/assets/hero-bg.jpg';
+import merchandiseCollection from '@/assets/merchandise-collection.jpg';
+import familyShopping from '@/assets/family-shopping.jpg';
 
 // Park gallery data
 const parkGallery = [
@@ -123,8 +126,15 @@ export default function HomePage() {
     <main>
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-        {/* Background */}
-        <div className="absolute inset-0 bg-magic" />
+        {/* Background Image */}
+        <div className="absolute inset-0">
+          <img 
+            src={heroBg} 
+            alt="Magical castle at twilight" 
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-primary/60" />
+        </div>
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gold/10 via-transparent to-transparent" />
         
         {/* Sparkles */}
@@ -259,10 +269,26 @@ export default function HomePage() {
             title="What We Shop" 
             subtitle="From exclusive Loungefly bags to limited edition popcorn buckets, we've got you covered."
           />
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {categories.map((cat, i) => (
-              <CategoryCard key={cat.name} {...cat} delay={i * 0.05} />
-            ))}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="relative rounded-3xl overflow-hidden shadow-elevated"
+            >
+              <img 
+                src={merchandiseCollection} 
+                alt="Theme park merchandise collection" 
+                className="w-full h-auto"
+                loading="lazy"
+              />
+            </motion.div>
+            <div className="grid grid-cols-2 gap-4">
+              {categories.map((cat, i) => (
+                <CategoryCard key={cat.name} {...cat} delay={i * 0.05} />
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -274,10 +300,26 @@ export default function HomePage() {
             title="Why Choose Us" 
             subtitle="We're not just shoppers — we're fellow fans who understand the magic."
           />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((feature, i) => (
-              <FeatureCard key={feature.title} {...feature} delay={i * 0.1} />
-            ))}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {features.map((feature, i) => (
+                <FeatureCard key={feature.title} {...feature} delay={i * 0.1} />
+              ))}
+            </div>
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="relative rounded-3xl overflow-hidden shadow-elevated"
+            >
+              <img 
+                src={familyShopping} 
+                alt="Happy family shopping at theme park" 
+                className="w-full h-auto"
+                loading="lazy"
+              />
+            </motion.div>
           </div>
         </div>
       </section>
