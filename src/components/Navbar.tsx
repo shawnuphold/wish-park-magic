@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Sparkles, ShoppingCart } from 'lucide-react';
+import { Menu, X, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '@/hooks/useCart';
+import logo from '@/assets/logo.png';
 
 const navLinks = [
   { name: 'Services', href: '/services' },
@@ -45,14 +46,12 @@ export function Navbar() {
       <div className="container-wide">
         <nav className="flex items-center justify-between h-20">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="relative">
-              <Sparkles className="w-8 h-8 text-gold transition-transform group-hover:scale-110" />
-              <div className="absolute -top-1 -right-1 w-2 h-2 bg-gold rounded-full animate-twinkle" />
-            </div>
-            <span className="font-heading text-xl font-bold text-foreground">
-              Enchanted Park Pickups
-            </span>
+          <Link to="/" className="flex items-center group">
+            <img 
+              src={logo} 
+              alt="Enchanted Park Pickups" 
+              className="h-14 w-auto transition-transform group-hover:scale-105"
+            />
           </Link>
 
           {/* Desktop Navigation */}

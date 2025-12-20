@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Sparkles, Facebook, Instagram, Mail } from 'lucide-react';
+import { Facebook, Instagram, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import logo from '@/assets/logo.png';
 
 const quickLinks = [
   { name: 'Services', href: '/services' },
@@ -36,11 +37,12 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
           {/* Brand Column */}
           <div className="lg:col-span-1">
-            <Link to="/" className="flex items-center gap-2 mb-4">
-              <Sparkles className="w-7 h-7 text-gold" />
-              <span className="font-heading text-lg font-bold">
-                Enchanted Park Pickups
-              </span>
+            <Link to="/" className="block mb-4">
+              <img 
+                src={logo} 
+                alt="Enchanted Park Pickups" 
+                className="h-16 w-auto"
+              />
             </Link>
             <p className="text-primary-foreground/70 text-sm leading-relaxed mb-6">
               Your personal shoppers for Disney World, Universal Orlando, and SeaWorld. 
