@@ -44,7 +44,7 @@ const parkGallery = [
   { image: epcotSphere, title: 'EPCOT', park: 'Disney World', span: '' },
   { image: wizardCastle, title: 'Wizarding World', park: 'Universal', span: '' },
   { image: seaworldShopping, title: 'SeaWorld Shop', park: 'SeaWorld', span: '' },
-  { image: mainStreet, title: 'Main Street Shopping', park: 'Disney World', span: '' },
+  { image: mainStreet, title: 'Resort Hotels', park: 'Disney World', span: '' },
   { image: waterPark, title: 'Aquatica', park: 'SeaWorld', span: '' },
 ];
 
