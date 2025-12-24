@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { ProductCard } from '@/components/new-releases/ProductCard';
 import { RequestModal } from '@/components/new-releases/RequestModal';
 import { NotifySection } from '@/components/new-releases/NotifySection';
@@ -10,25 +8,11 @@ import { ProductGridSkeleton } from '@/components/new-releases/ProductSkeleton';
 import { EmptyState } from '@/components/new-releases/EmptyState';
 import { ComingSoonTeaser } from '@/components/new-releases/ComingSoonTeaser';
 import { FilterBar } from '@/components/new-releases/FilterBar';
+import { mockProducts, Product } from '@/data/mockProducts';
 
 type Park = 'all' | 'disney' | 'universal' | 'seaworld';
 type Category = 'all' | 'loungefly' | 'spirit-jerseys' | 'popcorn-buckets' | 'ears' | 'pins' | 'limited-edition';
 type SortOption = 'newest' | 'price-low' | 'price-high';
-
-interface Product {
-  id: string;
-  title: string;
-  description: string | null;
-  park: 'disney' | 'universal' | 'seaworld';
-  category: string;
-  image_url: string;
-  source_url: string;
-  source: string;
-  price_estimate: number | null;
-  release_date: string;
-  is_limited_edition: boolean;
-  location_info: string | null;
-}
 
 export default function NewReleasesPage() {
   const [selectedPark, setSelectedPark] = useState<Park>('all');
@@ -37,6 +21,7 @@ export default function NewReleasesPage() {
   const [isSticky, setIsSticky] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -46,23 +31,14 @@ export default function NewReleasesPage() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Fetch products from database
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ['new-releases'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('new_releases')
-        .select('*')
-        .eq('status', 'active')
-        .order('release_date', { ascending: false });
-      
-      if (error) throw error;
-      return data as Product[];
-    },
-  });
+  // Simulate loading state
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Filter and sort products
-  const filteredProducts = products
+  const filteredProducts = mockProducts
     .filter((product) => {
       if (selectedPark !== 'all' && product.park !== selectedPark) return false;
       if (selectedCategory === 'limited-edition') return product.is_limited_edition;

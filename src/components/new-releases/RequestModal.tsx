@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
 import { z } from 'zod';
 
 interface Product {
@@ -85,28 +84,11 @@ export function RequestModal({ product, isOpen, onClose }: RequestModalProps) {
 
     setIsSubmitting(true);
 
-    try {
-      const { error } = await supabase.from('contact_submissions').insert({
-        type: 'product_request',
-        name,
-        email,
-        phone: phone || null,
-        product_id: product?.id,
-        product_name: product?.title,
-        quantity,
-        message: notes || null,
-        notify_similar: notifySimilar,
-      });
+    // Simulate form submission (frontend-only)
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-      if (error) throw error;
-
-      setIsSuccess(true);
-    } catch (error) {
-      console.error('Error submitting request:', error);
-      setErrors({ form: 'Failed to submit request. Please try again.' });
-    } finally {
-      setIsSubmitting(false);
-    }
+    setIsSuccess(true);
+    setIsSubmitting(false);
   };
 
   if (!product) return null;
