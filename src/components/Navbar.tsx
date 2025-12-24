@@ -41,7 +41,7 @@ export function Navbar() {
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled
           ? 'bg-background/95 backdrop-blur-md shadow-soft'
-          : 'bg-transparent'
+          : 'bg-midnight/80 backdrop-blur-sm'
       }`}
     >
       <div className="container-wide">
@@ -64,7 +64,9 @@ export function Navbar() {
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   location.pathname === link.href
                     ? 'text-gold bg-gold/10'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    : isScrolled 
+                      ? 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      : 'text-white/90 hover:text-white hover:bg-white/10'
                 }`}
               >
                 {link.name}
