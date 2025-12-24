@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
 import { z } from 'zod';
 
 const categories = [
@@ -54,23 +53,13 @@ export function NotifySection() {
 
     setIsSubmitting(true);
 
-    try {
-      const { error: dbError } = await supabase.from('notification_subscriptions').insert({
-        email,
-        categories: selectedCategories,
-      });
+    // Simulate form submission (frontend-only)
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-      if (dbError) throw dbError;
-
-      setIsSuccess(true);
-      setEmail('');
-      setSelectedCategories([]);
-    } catch (err) {
-      console.error('Error subscribing:', err);
-      setError('Failed to subscribe. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
+    setIsSuccess(true);
+    setEmail('');
+    setSelectedCategories([]);
+    setIsSubmitting(false);
   };
 
   return (

@@ -1,29 +1,13 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, MapPin, ExternalLink, Share2, Camera } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RequestModal } from '@/components/new-releases/RequestModal';
 import { ProductCard } from '@/components/new-releases/ProductCard';
-
-interface Product {
-  id: string;
-  title: string;
-  description: string | null;
-  park: 'disney' | 'universal' | 'seaworld';
-  category: string;
-  image_url: string;
-  source_url: string;
-  source: string;
-  price_estimate: number | null;
-  release_date: string;
-  is_limited_edition: boolean;
-  location_info: string | null;
-}
+import { mockProducts, Product } from '@/data/mockProducts';
 
 function ParkName(park: string) {
   switch (park) {
@@ -38,40 +22,13 @@ export default function ReleaseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Fetch product details
-  const { data: product, isLoading } = useQuery({
-    queryKey: ['release', id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('new_releases')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data as Product | null;
-    },
-  });
+  // Find product from mock data
+  const product = mockProducts.find(p => p.id === id) || null;
 
-  // Fetch similar products
-  const { data: similarProducts = [] } = useQuery({
-    queryKey: ['similar-releases', product?.category, product?.id],
-    queryFn: async () => {
-      if (!product) return [];
-      
-      const { data, error } = await supabase
-        .from('new_releases')
-        .select('*')
-        .eq('status', 'active')
-        .eq('category', product.category)
-        .neq('id', product.id)
-        .limit(4);
-      
-      if (error) throw error;
-      return data as Product[];
-    },
-    enabled: !!product,
-  });
+  // Get similar products (same category, different id)
+  const similarProducts = product
+    ? mockProducts.filter(p => p.category === product.category && p.id !== product.id).slice(0, 4)
+    : [];
 
   const handleShare = async () => {
     if (navigator.share && product) {
@@ -92,25 +49,6 @@ export default function ReleaseDetailPage() {
     ? Math.floor((Date.now() - releaseDate.getTime()) / (1000 * 60 * 60 * 24))
     : 0;
   const isNew = daysSinceRelease < 3;
-
-  if (isLoading) {
-    return (
-      <main className="min-h-screen pt-24 pb-16">
-        <div className="container-wide">
-          <Skeleton className="w-24 h-8 mb-8" />
-          <div className="grid md:grid-cols-2 gap-8">
-            <Skeleton className="aspect-square rounded-xl" />
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-3/4" />
-              <Skeleton className="h-6 w-1/4" />
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
 
   if (!product) {
     return (

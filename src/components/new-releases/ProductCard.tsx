@@ -2,21 +2,8 @@ import { motion } from 'framer-motion';
 import { ExternalLink, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-
-interface Product {
-  id: string;
-  title: string;
-  description: string | null;
-  park: 'disney' | 'universal' | 'seaworld';
-  category: string;
-  image_url: string;
-  source_url: string;
-  source: string;
-  price_estimate: number | null;
-  release_date: string;
-  is_limited_edition: boolean;
-  location_info: string | null;
-}
+import { Link } from 'react-router-dom';
+import { Product } from '@/data/mockProducts';
 
 interface ProductCardProps {
   product: Product;
