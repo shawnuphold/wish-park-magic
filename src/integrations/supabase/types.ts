@@ -14,7 +14,134 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      contact_submissions: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          message: string | null
+          name: string
+          notify_similar: boolean | null
+          phone: string | null
+          product_id: string | null
+          product_name: string | null
+          quantity: number | null
+          status: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          message?: string | null
+          name: string
+          notify_similar?: boolean | null
+          phone?: string | null
+          product_id?: string | null
+          product_name?: string | null
+          quantity?: number | null
+          status?: string
+          type?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string | null
+          name?: string
+          notify_similar?: boolean | null
+          phone?: string | null
+          product_id?: string | null
+          product_name?: string | null
+          quantity?: number | null
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_submissions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "new_releases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      new_releases: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string
+          is_limited_edition: boolean
+          location_info: string | null
+          park: string
+          price_estimate: number | null
+          release_date: string
+          source: string
+          source_url: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url: string
+          is_limited_edition?: boolean
+          location_info?: string | null
+          park: string
+          price_estimate?: number | null
+          release_date?: string
+          source: string
+          source_url: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string
+          is_limited_edition?: boolean
+          location_info?: string | null
+          park?: string
+          price_estimate?: number | null
+          release_date?: string
+          source?: string
+          source_url?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notification_subscriptions: {
+        Row: {
+          categories: string[]
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          categories?: string[]
+          created_at?: string
+          email: string
+          id?: string
+        }
+        Update: {
+          categories?: string[]
+          created_at?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

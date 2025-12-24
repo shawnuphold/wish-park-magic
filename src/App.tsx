@@ -15,6 +15,7 @@ import AboutPage from "./pages/AboutPage";
 import FAQPage from "./pages/FAQPage";
 import ContactPage from "./pages/ContactPage";
 import NewReleasesPage from "./pages/NewReleasesPage";
+import ReleaseDetailPage from "./pages/ReleaseDetailPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/how-it-works" element={<HowItWorksPage />} />
             <Route path="/shop" element={<ShopPage />} />
             <Route path="/new-releases" element={<NewReleasesPage />} />
+            <Route path="/new-releases/:id" element={<ReleaseDetailPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/faq" element={<FAQPage />} />
             <Route path="/contact" element={<ContactPage />} />
