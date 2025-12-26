@@ -15,6 +15,7 @@ const navLinks = [
   { name: 'About', href: '/about' },
   { name: 'FAQ', href: '/faq' },
   { name: 'Contact', href: '/contact' },
+  { name: 'Client Portal', href: '/portal' },
 ];
 
 export function Navbar() {
@@ -90,9 +91,9 @@ export function Navbar() {
 
             {/* CTA Button */}
             <Button variant="gold" className="hidden sm:flex" asChild>
-              <a href="https://m.me/" target="_blank" rel="noopener noreferrer">
+              <Link to="/request">
                 Start a Request
-              </a>
+              </Link>
             </Button>
 
             {/* Mobile Menu Button */}
@@ -133,9 +134,9 @@ export function Navbar() {
                   </Link>
                 ))}
                 <Button variant="gold" className="mt-4" asChild>
-                  <a href="https://m.me/" target="_blank" rel="noopener noreferrer">
+                  <Link to="/request">
                     Start a Request
-                  </a>
+                  </Link>
                 </Button>
               </div>
             </div>

@@ -102,15 +102,12 @@ export function Footer() {
                 </li>
               ))}
               <li>
-                <a
-                  href="https://portal.enchantedparkpickups.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary-foreground/70 hover:text-gold transition-colors text-sm inline-flex items-center gap-1"
+                <Link
+                  to="/portal"
+                  className="text-primary-foreground/70 hover:text-gold transition-colors text-sm"
                 >
                   Customer Portal Login
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
