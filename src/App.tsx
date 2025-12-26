@@ -16,6 +16,8 @@ import FAQPage from "./pages/FAQPage";
 import ContactPage from "./pages/ContactPage";
 import NewReleasesPage from "./pages/NewReleasesPage";
 import ReleaseDetailPage from "./pages/ReleaseDetailPage";
+import RequestPage from "./pages/RequestPage";
+import PortalPage from "./pages/PortalPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +41,8 @@ const App = () => (
             <Route path="/about" element={<AboutPage />} />
             <Route path="/faq" element={<FAQPage />} />
             <Route path="/contact" element={<ContactPage />} />
+            <Route path="/request" element={<RequestPage />} />
+            <Route path="/portal" element={<PortalPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Footer />
