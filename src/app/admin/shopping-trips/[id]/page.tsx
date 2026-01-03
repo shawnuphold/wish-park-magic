@@ -65,7 +65,7 @@ interface Trip {
   name: string | null;
   trip_date: string | null;
   park: string | null;
-  status: 'planning' | 'active' | 'completed' | 'cancelled';
+  status: 'planning' | 'planned' | 'active' | 'in_progress' | 'completed' | 'cancelled';
   shopper?: { id: string; name: string } | null;
   notes: string | null;
   items: TripItem[];
@@ -280,19 +280,19 @@ export default function ShoppingTripDetailPage() {
           </div>
           <Badge
             className={
-              trip.status === 'active'
+              ['active', 'in_progress'].includes(trip.status)
                 ? 'bg-green-100 text-green-700'
-                : trip.status === 'planning'
+                : ['planning', 'planned'].includes(trip.status)
                 ? 'bg-blue-100 text-blue-700'
                 : 'bg-gray-100 text-gray-700'
             }
           >
-            {trip.status}
+            {trip.status.replace('_', ' ')}
           </Badge>
         </div>
 
         {/* Progress */}
-        {trip.status === 'active' && (
+        {['active', 'in_progress'].includes(trip.status) && (
           <div className="mt-3">
             <div className="flex justify-between text-xs text-muted-foreground mb-1">
               <span>
@@ -311,7 +311,7 @@ export default function ShoppingTripDetailPage() {
       </div>
 
       {/* Planning state - show start button */}
-      {trip.status === 'planning' && (
+      {['planning', 'planned'].includes(trip.status) && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
           <Package className="w-8 h-8 mx-auto mb-2 text-blue-600" />
           <p className="font-medium text-blue-900">Trip not started yet</p>
@@ -432,14 +432,14 @@ export default function ShoppingTripDetailPage() {
               item={item}
               onMarkFound={handleMarkFound}
               onMarkNotFound={handleMarkNotFound}
-              disabled={trip.status !== 'active'}
+              disabled={!['active', 'in_progress'].includes(trip.status)}
             />
           ))}
         </div>
       )}
 
       {/* Floating action bar */}
-      {trip.status === 'active' && (
+      {['active', 'in_progress'].includes(trip.status) && (
         <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 flex gap-3">
           <Button
             variant="outline"

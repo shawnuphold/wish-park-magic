@@ -13,7 +13,7 @@ interface ShoppingTripCardProps {
     name: string | null;
     trip_date: string | null;
     park: string | null;
-    status: 'planning' | 'active' | 'completed' | 'cancelled';
+    status: 'planning' | 'planned' | 'active' | 'in_progress' | 'completed' | 'cancelled';
     shopper?: { id: string; name: string } | null;
     item_count?: number;
     found_count?: number;
@@ -38,7 +38,9 @@ const PARK_LABELS: Record<string, string> = {
 
 const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
   planning: { bg: 'bg-blue-100', text: 'text-blue-700' },
+  planned: { bg: 'bg-blue-100', text: 'text-blue-700' }, // Legacy
   active: { bg: 'bg-green-100', text: 'text-green-700' },
+  in_progress: { bg: 'bg-green-100', text: 'text-green-700' }, // Legacy
   completed: { bg: 'bg-gray-100', text: 'text-gray-700' },
   cancelled: { bg: 'bg-red-100', text: 'text-red-700' },
 };
@@ -110,7 +112,7 @@ export function ShoppingTripCard({ trip, onStart }: ShoppingTripCardProps) {
         </div>
 
         {/* Progress bar for active/completed trips */}
-        {trip.status !== 'planning' && trip.item_count && trip.item_count > 0 && (
+        {!['planning', 'planned'].includes(trip.status) && trip.item_count && trip.item_count > 0 && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>Progress</span>
@@ -127,15 +129,15 @@ export function ShoppingTripCard({ trip, onStart }: ShoppingTripCardProps) {
 
         {/* Actions */}
         <div className="flex items-center gap-2 pt-2">
-          {trip.status === 'planning' && onStart && (
+          {['planning', 'planned'].includes(trip.status) && onStart && (
             <Button size="sm" variant="gold" onClick={onStart} className="flex-1">
               <Play className="w-3.5 h-3.5 mr-1" />
               Start Trip
             </Button>
           )}
           <Link href={`/admin/shopping-trips/${trip.id}`} className="flex-1">
-            <Button size="sm" variant={trip.status === 'planning' ? 'outline' : 'gold'} className="w-full">
-              {trip.status === 'active' ? 'Continue Shopping' : 'View Details'}
+            <Button size="sm" variant={['planning', 'planned'].includes(trip.status) ? 'outline' : 'gold'} className="w-full">
+              {['active', 'in_progress'].includes(trip.status) ? 'Continue Shopping' : 'View Details'}
               <ChevronRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           </Link>

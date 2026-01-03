@@ -12,7 +12,7 @@ interface Trip {
   name: string | null;
   trip_date: string | null;
   park: string | null;
-  status: 'planning' | 'active' | 'completed' | 'cancelled';
+  status: 'planning' | 'planned' | 'active' | 'in_progress' | 'completed' | 'cancelled';
   shopper?: { id: string; name: string } | null;
   item_count?: number;
   found_count?: number;
