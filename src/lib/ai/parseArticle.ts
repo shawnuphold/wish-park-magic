@@ -49,7 +49,7 @@ export async function parseArticleForProducts(
   sourceName: string
 ): Promise<ParseResult> {
   const response = await getAnthropic().messages.create({
-    model: 'claude-haiku-3-5-20241022',
+    model: 'claude-3-5-haiku-20241022',
     max_tokens: 4096,
     messages: [{
       role: 'user',
@@ -144,7 +144,7 @@ export async function generateProductDescription(
   existingDescription?: string
 ): Promise<string> {
   const response = await getAnthropic().messages.create({
-    model: 'claude-haiku-3-5-20241022',
+    model: 'claude-3-5-haiku-20241022',
     max_tokens: 500,
     messages: [{
       role: 'user',
@@ -172,7 +172,7 @@ export async function findSimilarProducts(
   if (existingProducts.length === 0) return [];
 
   const response = await getAnthropic().messages.create({
-    model: 'claude-haiku-3-5-20241022',
+    model: 'claude-3-5-haiku-20241022',
     max_tokens: 500,
     messages: [{
       role: 'user',
