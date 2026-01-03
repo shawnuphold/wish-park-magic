@@ -255,6 +255,9 @@ export interface Database {
           source_id: string | null
           article_url: string | null
           location: string | null
+          // Store location fields
+          store_name: string | null  // e.g., "Creations Shop", "Emporium"
+          store_area: string | null  // e.g., "World Showcase", "Main Street USA"
           // Lifecycle fields
           projected_release_date: string | null
           actual_release_date: string | null

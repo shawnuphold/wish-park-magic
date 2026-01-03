@@ -389,6 +389,8 @@ export async function processArticle(
             article_url: articleUrl,
             location: product.park,
             locations: product.locations || [],  // Structured location data from AI
+            store_name: product.store_name || null,  // Specific store name from article
+            store_area: product.store_area || null,  // Land/area from article
           })
           .select('id')
           .single();
