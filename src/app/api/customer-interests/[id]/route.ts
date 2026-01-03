@@ -1,48 +1,59 @@
-// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/lib/database.types';
+import { requireAuth } from '@/lib/auth/api-auth';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
+// All customer-interests mutations require auth
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth();
+  if (!auth.success) return auth.response;
+
   const supabase = getSupabaseAdmin();
   const { id } = await params;
-  const body = await request.json();
 
-  const updateData: Record<string, unknown> = {};
+  try {
+    const body = await request.json();
 
-  if (body.category !== undefined) updateData.category = body.category;
-  if (body.park !== undefined) updateData.park = body.park;
-  if (body.keywords !== undefined) updateData.keywords = body.keywords;
-  if (body.notify_new_releases !== undefined) updateData.notify_new_releases = body.notify_new_releases;
+    const updateData: Record<string, unknown> = {};
 
-  const { data, error } = await supabase
-    .from('customer_interests')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single();
+    if (body.category !== undefined) updateData.category = body.category;
+    if (body.park !== undefined) updateData.park = body.park;
+    if (body.keywords !== undefined) updateData.keywords = body.keywords;
+    if (body.notify_new_releases !== undefined) updateData.notify_new_releases = body.notify_new_releases;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const { data, error } = await supabase
+      .from('customer_interests')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json(
+        { error: error?.message || 'Interest not found' },
+        { status: error ? 500 : 404 }
+      );
+    }
+
+    return NextResponse.json({ interest: data });
+  } catch (error) {
+    console.error('Error updating interest:', error);
+    return NextResponse.json(
+      { error: 'Failed to update interest' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ interest: data });
 }
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth();
+  if (!auth.success) return auth.response;
+
   const supabase = getSupabaseAdmin();
   const { id } = await params;
 

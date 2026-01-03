@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 "use client";
 
 import { Suspense, useEffect, useState } from 'react';
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Loader2, Plus, Trash2, ImageIcon } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Trash2, ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   type ItemCategory,
@@ -26,6 +26,9 @@ import {
   SPECIALTY_CATEGORIES,
 } from '@/lib/database.types';
 import { ImageUploader } from '@/components/ImageUploader';
+import { StoreLocationPicker, type StoreLocation } from '@/components/StoreLocationPicker';
+import { ScreenshotRequestParser } from '@/components/ScreenshotRequestParser';
+import type { ParsedRequestItem } from '@/lib/ai/parseScreenshot';
 
 interface Customer {
   id: string;
@@ -38,6 +41,8 @@ interface RequestItem {
   description: string;
   category: ItemCategory;
   park: Park;
+  store_name: string;
+  land_name: string;
   reference_url: string;
   reference_images: string[];
   quantity: number;
@@ -69,6 +74,8 @@ const emptyItem: RequestItem = {
   description: '',
   category: 'other',
   park: 'disney',
+  store_name: '',
+  land_name: '',
   reference_url: '',
   reference_images: [],
   quantity: 1,
@@ -88,6 +95,60 @@ function NewRequestForm() {
   const [items, setItems] = useState<RequestItem[]>([{ ...emptyItem }]);
   const [loading, setLoading] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [showScreenshotParser, setShowScreenshotParser] = useState(false);
+
+  // Handle items confirmed from screenshot parser
+  const handleScreenshotItemsConfirmed = (parsedItems: ParsedRequestItem[]) => {
+    const newItems: RequestItem[] = parsedItems.map((item) => ({
+      name: item.item_name,
+      description: item.notes || '',
+      category: item.category || 'other',
+      park: 'disney', // Default, user can change
+      store_name: '',
+      land_name: '',
+      reference_url: '',
+      reference_images: [],
+      quantity: item.quantity || 1,
+      estimated_price: item.estimated_price?.toString() || '',
+      is_specialty: item.category ? SPECIALTY_CATEGORIES.includes(item.category) : false,
+    }));
+
+    // Replace empty items or append to existing
+    if (items.length === 1 && !items[0].name) {
+      setItems(newItems);
+    } else {
+      setItems((prev) => [...prev, ...newItems]);
+    }
+
+    setShowScreenshotParser(false);
+    toast({
+      title: 'Items added',
+      description: `${newItems.length} item(s) added from screenshot`,
+    });
+  };
+
+  // Handle location change from StoreLocationPicker
+  const handleLocationChange = (index: number, location: StoreLocation) => {
+    setItems((prev) => {
+      const updated = [...prev];
+      // Extract park from full park name (e.g., "Magic Kingdom" -> "disney")
+      let park: Park = 'disney';
+      const parkName = location.park.toLowerCase();
+      if (parkName.includes('universal') || parkName.includes('islands') || parkName.includes('citywalk') || parkName.includes('epic')) {
+        park = 'universal';
+      } else if (parkName.includes('seaworld') || parkName.includes('busch')) {
+        park = 'seaworld';
+      }
+
+      updated[index] = {
+        ...updated[index],
+        park,
+        store_name: location.store || '',
+        land_name: location.land || '',
+      };
+      return updated;
+    });
+  };
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -176,6 +237,8 @@ function NewRequestForm() {
         description: item.description || null,
         category: item.category,
         park: item.park,
+        store_name: item.store_name || null,
+        land_name: item.land_name || null,
         reference_url: item.reference_url || null,
         reference_images: item.reference_images.length > 0 ? item.reference_images : [],
         quantity: item.quantity,
@@ -268,6 +331,35 @@ function NewRequestForm() {
           </CardContent>
         </Card>
 
+        {/* Screenshot Parser Section */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between py-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ImageIcon className="w-4 h-4" />
+              Import from Screenshot
+            </CardTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowScreenshotParser(!showScreenshotParser)}
+            >
+              {showScreenshotParser ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </Button>
+          </CardHeader>
+          {showScreenshotParser && (
+            <CardContent className="pt-0">
+              <ScreenshotRequestParser
+                onItemsConfirmed={handleScreenshotItemsConfirmed}
+              />
+            </CardContent>
+          )}
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Items</CardTitle>
@@ -335,24 +427,6 @@ function NewRequestForm() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Park</Label>
-                    <Select
-                      value={item.park}
-                      onValueChange={(v) => handleItemChange(index, 'park', v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {parks.map((park) => (
-                          <SelectItem key={park.value} value={park.value}>
-                            {park.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
                     <Label>Quantity</Label>
                     <Input
                       type="number"
@@ -362,6 +436,24 @@ function NewRequestForm() {
                     />
                   </div>
                 </div>
+
+                {/* Store Location Picker */}
+                <StoreLocationPicker
+                  value={{
+                    park: item.store_name ? (
+                      // Try to reconstruct full park name from store selection
+                      item.park === 'universal' ? 'Universal Studios Florida' :
+                      item.park === 'seaworld' ? 'SeaWorld Orlando' :
+                      'Magic Kingdom'
+                    ) : '',
+                    land: item.land_name || null,
+                    store: item.store_name || null,
+                  }}
+                  onChange={(location) => handleLocationChange(index, location)}
+                  label="Store Location"
+                  showLandSelector={true}
+                  showStoreSelector={true}
+                />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">

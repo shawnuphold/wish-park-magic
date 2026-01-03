@@ -1,25 +1,44 @@
-// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 import { processAllSources, processFeedSource } from '@/lib/ai/feedFetcher';
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/lib/database.types';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { timingSafeEqual } from 'crypto';
 
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+/**
+ * Timing-safe API key comparison to prevent timing attacks.
+ * Returns true only if both keys exist and match.
+ */
+function isValidCronApiKey(providedKey: string | null): boolean {
+  const expectedKey = process.env.CRON_API_KEY;
+
+  // Both must be present
+  if (!providedKey || !expectedKey) {
+    return false;
+  }
+
+  // Keys must be the same length for timingSafeEqual
+  // If lengths differ, they can't match anyway
+  if (providedKey.length !== expectedKey.length) {
+    return false;
+  }
+
+  // Use timing-safe comparison to prevent timing attacks
+  const providedBuffer = Buffer.from(providedKey);
+  const expectedBuffer = Buffer.from(expectedKey);
+
+  return timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
-// POST /api/releases/process - Trigger feed processing
+// POST /api/releases/process - Trigger feed processing (admin or cron)
 export async function POST(request: NextRequest) {
-  // Check for API key (for cron jobs) or auth
+  // Check for cron API key first (timing-safe comparison)
   const apiKey = request.headers.get('x-api-key');
-  const isValidApiKey = apiKey === process.env.CRON_API_KEY;
+  const isValidApiKey = isValidCronApiKey(apiKey);
 
+  // If no valid API key, require admin auth
   if (!isValidApiKey) {
-    // For web requests, we'll just allow it for now (add auth check later)
-    // return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await requireAdminAuth();
+    if (!auth.success) return auth.response;
   }
 
   const body = await request.json().catch(() => ({}));
@@ -30,7 +49,7 @@ export async function POST(request: NextRequest) {
       // Process specific source
       const supabase = getSupabaseAdmin();
       const { data: source, error } = await supabase
-        .from('release_sources')
+        .from('feed_sources')
         .select('*')
         .eq('id', sourceId)
         .single();
@@ -69,8 +88,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/releases/process - Get processing status/stats
+// GET /api/releases/process - Get processing status/stats (admin only)
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   const supabase = getSupabaseAdmin();
 
   // Get recent processing stats
@@ -81,7 +103,7 @@ export async function GET() {
     .limit(20);
 
   const { data: sources } = await supabase
-    .from('release_sources')
+    .from('feed_sources')
     .select('*')
     .eq('is_active', true);
 

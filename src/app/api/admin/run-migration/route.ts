@@ -1,26 +1,23 @@
-// @ts-nocheck
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
+import { createSupabaseAdminClient } from '@/lib/supabase/server';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
+// Admin-only migration endpoint
 export async function POST() {
+  // Require admin authentication
+  const auth = await requireAdminAuth(['admin']); // Only admin role
+  if (!auth.success) return auth.response;
+
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { persistSession: false }
-    });
+    const supabase = createSupabaseAdminClient();
 
-    // Run each migration statement individually using rpc if available,
-    // or we'll check if the columns exist using the table info
-
-    // First, let's check which columns already exist by querying the invoices table
-    const { data: existingData, error: checkError } = await supabase
+    // Check which columns already exist by querying the invoices table
+    const { data: existingData } = await supabase
       .from('invoices')
       .select('*')
       .limit(1);
 
-    // Get column names from the first row or the error message
+    // Get column names from the first row
     const existingColumns = existingData && existingData[0]
       ? Object.keys(existingData[0])
       : [];
@@ -89,10 +86,10 @@ CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_numbe
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
       `,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Migration check error:', error);
     return NextResponse.json(
-      { error: error.message || 'Migration check failed' },
+      { error: error instanceof Error ? error.message : 'Migration check failed' },
       { status: 500 }
     );
   }

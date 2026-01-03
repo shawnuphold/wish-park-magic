@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 "use client";
 
 import { useState } from 'react';

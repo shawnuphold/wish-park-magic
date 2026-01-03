@@ -1,0 +1,359 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Enchanted Park Pickups - Magical Theme */
+    --background: 0 0% 100%;
+    --foreground: 222 50% 17%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 50% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 50% 17%;
+
+    /* Deep Midnight Blue */
+    --primary: 222 50% 17%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Soft lavender */
+    --secondary: 240 20% 96%;
+    --secondary-foreground: 222 50% 17%;
+
+    /* Muted tones */
+    --muted: 240 10% 95%;
+    --muted-foreground: 222 20% 45%;
+
+    /* Gold accent */
+    --accent: 43 67% 52%;
+    --accent-foreground: 222 50% 17%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 10% 90%;
+    --input: 240 10% 90%;
+    --ring: 43 67% 52%;
+
+    --radius: 0.75rem;
+
+    /* Custom colors */
+    --gold: 43 67% 52%;
+    --gold-light: 43 70% 70%;
+    --gold-dark: 43 60% 40%;
+    --midnight: 222 50% 17%;
+    --midnight-light: 222 40% 25%;
+    --midnight-dark: 222 55% 10%;
+    --purple-soft: 260 40% 96%;
+    --magic-gradient: linear-gradient(135deg, hsl(222, 50%, 17%) 0%, hsl(260, 45%, 25%) 50%, hsl(280, 40%, 30%) 100%);
+    --shimmer: linear-gradient(90deg, transparent, hsl(43, 67%, 52%, 0.3), transparent);
+
+    /* Shadows */
+    --shadow-soft: 0 4px 20px -4px hsl(222, 50%, 17%, 0.1);
+    --shadow-card: 0 8px 30px -8px hsl(222, 50%, 17%, 0.12);
+    --shadow-elevated: 0 20px 50px -15px hsl(222, 50%, 17%, 0.2);
+    --shadow-gold: 0 4px 20px -4px hsl(43, 67%, 52%, 0.3);
+
+    /* Typography */
+    --font-heading: 'Playfair Display', serif;
+    --font-body: 'Inter', sans-serif;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 222 50% 17%;
+    --sidebar-primary: 222 50% 17%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 43 67% 52%;
+    --sidebar-accent-foreground: 222 50% 17%;
+    --sidebar-border: 240 10% 90%;
+    --sidebar-ring: 43 67% 52%;
+  }
+
+  .dark {
+    --background: 222 55% 10%;
+    --foreground: 0 0% 98%;
+
+    --card: 222 50% 14%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 222 50% 14%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 43 67% 52%;
+    --primary-foreground: 222 50% 17%;
+
+    --secondary: 222 40% 20%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 222 40% 20%;
+    --muted-foreground: 240 10% 70%;
+
+    --accent: 43 67% 52%;
+    --accent-foreground: 222 50% 17%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 40% 25%;
+    --input: 222 40% 25%;
+    --ring: 43 67% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+}
+
+@layer components {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(var(--gold)) 0%, hsl(var(--gold-light)) 100%);
+  }
+
+  .bg-magic {
+    background: var(--magic-gradient);
+  }
+
+  .font-heading {
+    font-family: var(--font-heading);
+  }
+
+  .font-body {
+    font-family: var(--font-body);
+  }
+
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: var(--shimmer);
+    animation: shimmer 3s infinite;
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .shadow-gold {
+    box-shadow: var(--shadow-gold);
+  }
+
+  /* Hide scrollbar utility */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .section-padding {
+    @apply py-16 md:py-24 lg:py-32;
+  }
+
+  .container-tight {
+    @apply max-w-5xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .container-wide {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .bg-gold {
+    background-color: hsl(var(--gold));
+  }
+
+  .text-gold {
+    color: hsl(var(--gold));
+  }
+
+  .bg-midnight {
+    background-color: hsl(var(--midnight));
+  }
+
+  .text-midnight {
+    color: hsl(var(--midnight));
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Print Styles */
+@media print {
+  /* Reset colors for printing */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 0 0% 40%;
+    --border: 0 0% 80%;
+  }
+
+  /* Hide non-essential elements */
+  nav,
+  aside,
+  header nav,
+  .print\\:hidden,
+  [data-sidebar],
+  button:not(.print-visible),
+  .no-print {
+    display: none !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+
+  /* Main content full width */
+  main,
+  .print-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Card styling for print */
+  .card,
+  [class*="Card"] {
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Badge styling for print */
+  .badge,
+  [class*="Badge"] {
+    border: 1px solid #999 !important;
+    background: #f5f5f5 !important;
+    color: #333 !important;
+    padding: 2px 8px !important;
+  }
+
+  /* Shopping list specific print styles */
+  .print-shopping-list {
+    display: block !important;
+  }
+
+  .print-shopping-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+    page-break-inside: avoid;
+  }
+
+  .print-checkbox {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #333;
+    border-radius: 2px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* Park section headers */
+  .print-park-header {
+    font-size: 14pt;
+    font-weight: bold;
+    margin: 1rem 0 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 2px solid #333;
+    page-break-after: avoid;
+  }
+
+  /* Trip header for print */
+  .print-trip-header {
+    text-align: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #333;
+  }
+
+  .print-trip-header h1 {
+    font-size: 18pt;
+    margin: 0;
+  }
+
+  .print-trip-header p {
+    font-size: 12pt;
+    color: #666;
+    margin: 0.25rem 0 0;
+  }
+
+  /* Links - remove underlines and colors */
+  a {
+    color: black !important;
+    text-decoration: none !important;
+  }
+
+}

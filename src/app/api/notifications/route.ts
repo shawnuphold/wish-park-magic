@@ -1,9 +1,37 @@
-// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 import { sendNotifications, findNewReleasesToNotify, getEligibleCustomers } from '@/lib/ai/notifications';
+import { timingSafeEqual } from 'crypto';
 
-// GET /api/notifications - Preview pending notifications
+/**
+ * Timing-safe API key comparison to prevent timing attacks.
+ * Returns true only if both keys exist and match.
+ */
+function isValidCronApiKey(providedKey: string | null): boolean {
+  const expectedKey = process.env.CRON_API_KEY;
+
+  // Both must be present
+  if (!providedKey || !expectedKey) {
+    return false;
+  }
+
+  // Keys must be the same length for timingSafeEqual
+  if (providedKey.length !== expectedKey.length) {
+    return false;
+  }
+
+  // Use timing-safe comparison to prevent timing attacks
+  const providedBuffer = Buffer.from(providedKey);
+  const expectedBuffer = Buffer.from(expectedKey);
+
+  return timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+// GET /api/notifications - Preview pending notifications (admin only)
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     const releases = await findNewReleasesToNotify(24);
     const customers = await getEligibleCustomers();
@@ -26,14 +54,16 @@ export async function GET() {
   }
 }
 
-// POST /api/notifications - Send pending notifications
+// POST /api/notifications - Send pending notifications (admin or cron with API key)
 export async function POST(request: NextRequest) {
-  // Optional: Check for API key or auth
+  // Check for cron API key first (timing-safe comparison)
   const apiKey = request.headers.get('x-api-key');
-  const isValidApiKey = apiKey === process.env.CRON_API_KEY;
+  const isValidApiKey = isValidCronApiKey(apiKey);
 
-  if (process.env.NODE_ENV === 'production' && !isValidApiKey) {
-    // Add proper auth check here
+  // If no valid API key, require admin auth
+  if (!isValidApiKey) {
+    const auth = await requireAdminAuth();
+    if (!auth.success) return auth.response;
   }
 
   try {

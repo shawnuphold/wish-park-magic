@@ -1,15 +1,9 @@
-// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/lib/database.types';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { validateRequestBody, createReleaseSchema } from '@/lib/validations';
 
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
+// GET is public - supports the /new-releases page
 export async function GET(request: NextRequest) {
   const supabase = getSupabaseAdmin();
   const searchParams = request.nextUrl.searchParams;
@@ -49,35 +43,51 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ releases: data, total: count });
 }
 
+// POST requires admin auth
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
+  // Validate request body
+  const validation = await validateRequestBody(request, createReleaseSchema);
+  if (!validation.success) return validation.response;
+
   const supabase = getSupabaseAdmin();
-  const body = await request.json();
+  const body = validation.data;
 
-  const { data, error } = await supabase
-    .from('new_releases')
-    .insert({
-      title: body.title,
-      description: body.description,
-      image_url: body.image_url || '',
-      source_url: body.source_url || '',
-      source: body.source || 'Manual',
-      park: body.park,
-      category: body.category,
-      price_estimate: body.price_estimate,
-      release_date: body.release_date || new Date().toISOString(),
-      is_limited_edition: body.is_limited_edition || false,
-      is_featured: body.is_featured || false,
-      ai_tags: body.ai_tags || [],
-      ai_demand_score: body.ai_demand_score || 5,
-      status: 'approved', // Manual entries are auto-approved
-      location: body.location,
-    })
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('new_releases')
+      .insert({
+        title: body.title,
+        description: body.description,
+        image_url: body.image_url || '',
+        source_url: body.source_url || '',
+        source: body.source,
+        park: body.park,
+        category: body.category,
+        price_estimate: body.price_estimate,
+        release_date: body.release_date || new Date().toISOString(),
+        is_limited_edition: body.is_limited_edition,
+        is_featured: body.is_featured,
+        ai_tags: body.ai_tags || [],
+        ai_demand_score: body.ai_demand_score,
+        status: 'approved', // Manual entries are auto-approved
+        location: body.location,
+      })
+      .select()
+      .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ release: data });
+  } catch (error) {
+    console.error('Error creating release:', error);
+    return NextResponse.json(
+      { error: 'Failed to create release' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ release: data });
 }

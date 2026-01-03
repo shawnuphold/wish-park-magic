@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -11,7 +11,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SwipeableCard } from '@/components/SwipeableCard';
 import { FloatingActionButton } from '@/components/FloatingActionButton';
-import { QuickAddRequest } from '@/components/QuickAddRequest';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +29,8 @@ import {
   XCircle,
   Edit,
   Eye,
+  Camera,
+  ChevronDown,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -43,7 +44,7 @@ interface RequestWithDetails {
   quoted_total: number | null;
   customer: { id: string; name: string; email: string };
   item_count: number;
-  first_item_name?: string;
+  item_names: string[];
 }
 
 const statusFilters: { value: RequestStatus | 'all'; label: string }[] = [
@@ -65,7 +66,7 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const fetchRequests = async () => {
     try {
@@ -91,7 +92,7 @@ export default function RequestsPage() {
           quoted_total: r.quoted_total,
           customer: r.customer as { id: string; name: string; email: string },
           item_count: (r.items as { id: string; name: string }[])?.length || 0,
-          first_item_name: (r.items as { id: string; name: string }[])?.[0]?.name,
+          item_names: (r.items as { id: string; name: string }[])?.map(i => i.name) || [],
         })) || []
       );
     } catch (error) {
@@ -172,15 +173,43 @@ export default function RequestsPage() {
           <h1 className="text-xl lg:text-2xl font-heading font-bold text-foreground">Requests</h1>
           <p className="text-sm text-muted-foreground hidden sm:block">Manage shopping requests</p>
         </div>
-        <Link href="/admin/requests/new">
-          <Button variant="gold" size="sm" className="lg:hidden">
-            <Plus className="w-5 h-5" />
-          </Button>
-          <Button variant="gold" className="hidden lg:flex">
-            <Plus className="w-4 h-4 mr-2" />
-            New Request
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* Smart Screenshot button - handles both messages and merchandise */}
+          <Link href="/admin/requests/from-screenshot" className="hidden lg:block">
+            <Button variant="outline" size="sm">
+              <Camera className="w-4 h-4 mr-2" />
+              From Screenshot
+            </Button>
+          </Link>
+          {/* New Request dropdown - mobile */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="gold" size="sm" className="lg:hidden">
+                <Plus className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href="/admin/requests/new" className="flex items-center">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Manual Entry
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/admin/requests/from-screenshot" className="flex items-center">
+                  <Camera className="w-4 h-4 mr-2" />
+                  From Screenshot
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Link href="/admin/requests/new" className="hidden lg:block">
+            <Button variant="gold">
+              <Plus className="w-4 h-4 mr-2" />
+              New Request
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Search and filters */}
@@ -287,8 +316,9 @@ export default function RequestsPage() {
                           {request.customer?.name || 'Unknown'}
                         </h3>
                         <p className="text-sm text-muted-foreground truncate">
-                          {request.first_item_name || 'No items'}
-                          {request.item_count > 1 && ` +${request.item_count - 1} more`}
+                          {request.item_names.length > 0
+                            ? request.item_names.join(', ')
+                            : 'No items'}
                         </p>
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
@@ -354,7 +384,9 @@ export default function RequestsPage() {
                           <div>
                             <span className="font-medium">{request.customer?.name || 'Unknown'}</span>
                             <p className="text-sm text-muted-foreground truncate max-w-[200px]">
-                              {request.first_item_name || 'No items'}
+                              {request.item_names.length > 0
+                                ? request.item_names.join(', ')
+                                : 'No items'}
                             </p>
                           </div>
                         </div>
@@ -423,17 +455,65 @@ export default function RequestsPage() {
 
       {/* Floating Action Button (mobile only) */}
       <FloatingActionButton
-        onClick={() => setShowQuickAdd(true)}
+        onClick={() => setShowMobileMenu(true)}
         icon={<Plus className="w-6 h-6" />}
         label="New Request"
       />
 
-      {/* Quick Add Request Bottom Sheet */}
-      <QuickAddRequest
-        isOpen={showQuickAdd}
-        onClose={() => setShowQuickAdd(false)}
-        onSuccess={fetchRequests}
-      />
+      {/* Mobile Action Menu */}
+      {showMobileMenu && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowMobileMenu(false)}
+          />
+          {/* Bottom Sheet */}
+          <div className="absolute bottom-0 left-0 right-0 bg-background rounded-t-2xl p-4 pb-8 animate-in slide-in-from-bottom">
+            <div className="w-12 h-1 bg-muted rounded-full mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-center mb-4">New Request</h3>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  router.push('/admin/requests/from-screenshot');
+                }}
+                className="w-full flex items-center gap-3 p-4 rounded-lg bg-gold/10 hover:bg-gold/20 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center">
+                  <Camera className="w-5 h-5 text-gold" />
+                </div>
+                <div className="text-left">
+                  <p className="font-medium">From Screenshot</p>
+                  <p className="text-sm text-muted-foreground">Upload a message screenshot</p>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  router.push('/admin/requests/new');
+                }}
+                className="w-full flex items-center gap-3 p-4 rounded-lg hover:bg-muted transition-colors"
+              >
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                  <Edit className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div className="text-left">
+                  <p className="font-medium">Manual Entry</p>
+                  <p className="text-sm text-muted-foreground">Enter request details manually</p>
+                </div>
+              </button>
+            </div>
+            <Button
+              variant="ghost"
+              className="w-full mt-4"
+              onClick={() => setShowMobileMenu(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

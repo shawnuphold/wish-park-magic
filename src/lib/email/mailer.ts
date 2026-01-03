@@ -12,7 +12,9 @@
  */
 
 import nodemailer from 'nodemailer';
+import { createLogger } from '@/lib/logger';
 
+const log = createLogger('Email');
 const DRY_RUN = !process.env.SMTP_HOST || process.env.EMAIL_DRY_RUN === 'true';
 
 const transporter = DRY_RUN ? null : nodemailer.createTransport({
@@ -39,14 +41,8 @@ export async function sendEmail({
   text: string;
 }): Promise<void> {
   if (DRY_RUN) {
-    console.log('═'.repeat(60));
-    console.log('📧 EMAIL (dry run - not sent)');
-    console.log('═'.repeat(60));
-    console.log(`To: ${to}`);
-    console.log(`Subject: ${subject}`);
-    console.log('─'.repeat(60));
-    console.log(text.slice(0, 500) + (text.length > 500 ? '...' : ''));
-    console.log('═'.repeat(60));
+    log.info('Email dry run (not sent)', { to, subject });
+    log.debug('Email content preview', { text: text.slice(0, 200) });
     return;
   }
 

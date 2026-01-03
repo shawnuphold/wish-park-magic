@@ -1,8 +1,9 @@
-// @ts-nocheck
+// Type checking enabled
 "use client";
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -127,6 +128,8 @@ export default function NewReleasesPage() {
     notes: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [displayLimit, setDisplayLimit] = useState(24); // Show 24 initially
+  const [loadingMore, setLoadingMore] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -253,6 +256,23 @@ export default function NewReleasesPage() {
     r.title.toLowerCase().includes(search.toLowerCase()) ||
     (r.ai_tags && r.ai_tags.some(tag => tag.toLowerCase().includes(search.toLowerCase())))
   );
+
+  // Paginated releases for display
+  const displayedReleases = filteredReleases.slice(0, displayLimit);
+  const hasMoreReleases = filteredReleases.length > displayLimit;
+
+  const handleLoadMore = () => {
+    setLoadingMore(true);
+    setTimeout(() => {
+      setDisplayLimit(prev => prev + 24);
+      setLoadingMore(false);
+    }, 300);
+  };
+
+  // Reset display limit when filters change
+  useEffect(() => {
+    setDisplayLimit(24);
+  }, [search, parkFilter, categoryFilter, ageFilter]);
 
   const ReleaseCard = ({ release, showCountdown = false }: { release: NewRelease; showCountdown?: boolean }) => {
     // Get public image URL (excludes shopDisney images)
@@ -638,11 +658,11 @@ export default function NewReleasesPage() {
             <>
               <div className="flex items-center justify-between mb-6">
                 <p className="text-muted-foreground">
-                  Showing {filteredReleases.length} release{filteredReleases.length !== 1 ? 's' : ''}
+                  Showing {displayedReleases.length} of {filteredReleases.length} release{filteredReleases.length !== 1 ? 's' : ''}
                 </p>
               </div>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredReleases.map((release, index) => (
+                {displayedReleases.map((release, index) => (
                   <motion.div
                     key={release.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -653,6 +673,28 @@ export default function NewReleasesPage() {
                   </motion.div>
                 ))}
               </div>
+              {hasMoreReleases && (
+                <div className="flex justify-center mt-8">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="min-w-[200px]"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        Load More ({filteredReleases.length - displayLimit} remaining)
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </div>

@@ -1,7 +1,7 @@
 // API configuration and utilities
 // Uses relative URLs (same-origin) by default
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '';
 
 export const apiEndpoints = {
   // Request endpoints

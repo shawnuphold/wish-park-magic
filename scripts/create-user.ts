@@ -27,7 +27,7 @@ async function createUser() {
       return;
     }
 
-    const existingUser = existingUsers.users.find(u => u.email === email);
+    const existingUser = existingUsers?.users?.find((u: { email?: string }) => u.email === email);
 
     if (existingUser) {
       console.log('User already exists:', existingUser.id);

@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 /**
  * Release Image Management
  *
@@ -11,6 +11,9 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import type { ReleaseImage, ImageSource } from '../database.types';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('Images');
 
 // Lazy initialization for S3 client (env vars may not be loaded at module init)
 let s3Client: S3Client | null = null;
@@ -48,7 +51,7 @@ async function downloadImage(url: string): Promise<{ buffer: Buffer; contentType
     });
 
     if (!response.ok) {
-      console.error(`Failed to download image: ${response.status}`);
+      log.error(`Failed to download image`, null, { status: response.status });
       return null;
     }
 
@@ -58,19 +61,19 @@ async function downloadImage(url: string): Promise<{ buffer: Buffer; contentType
 
     // Validate it's an image
     if (!contentType.startsWith('image/')) {
-      console.error(`Not an image: ${contentType}`);
+      log.error(`Not an image`, null, { contentType });
       return null;
     }
 
     // Check file size (max 10MB)
     if (buffer.length > 10 * 1024 * 1024) {
-      console.error('Image too large (>10MB)');
+      log.error('Image too large (>10MB)');
       return null;
     }
 
     return { buffer, contentType };
   } catch (error) {
-    console.error('Failed to download image:', error);
+    log.error('Failed to download image', error);
     return null;
   }
 }
@@ -126,10 +129,46 @@ export async function uploadBufferToS3(
 ): Promise<string | null> {
   try {
     const s3Url = await uploadToS3(buffer, contentType, releaseId);
-    console.log(`Stored cropped image: ${s3Url}`);
+    log.debug(`Stored cropped image`, { url: s3Url });
     return s3Url;
   } catch (error) {
-    console.error('Failed to upload buffer to S3:', error);
+    log.error('Failed to upload buffer to S3', error);
+    return null;
+  }
+}
+
+/**
+ * Store original full-size image to S3 (before cropping)
+ * Uses 'originals' subfolder to distinguish from cropped versions
+ */
+export async function storeOriginalImage(
+  imageUrl: string,
+  releaseId: string
+): Promise<string | null> {
+  try {
+    const imageData = await downloadImage(imageUrl);
+    if (!imageData) {
+      return null;
+    }
+
+    const extension = getExtension(imageData.contentType);
+    const fileName = `original-${uuidv4()}.${extension}`;
+    const key = `releases/${releaseId}/originals/${fileName}`;
+    const bucket = getS3Bucket();
+    const region = getS3Region();
+
+    await getS3Client().send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: imageData.buffer,
+      ContentType: imageData.contentType,
+    }));
+
+    const s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+    log.debug(`Stored original image`, { url: s3Url });
+    return s3Url;
+  } catch (error) {
+    log.error('Failed to store original image', error);
     return null;
   }
 }
@@ -152,10 +191,10 @@ export async function downloadAndStoreImage(
   try {
     // Upload to S3
     const s3Url = await uploadToS3(imageData.buffer, imageData.contentType, releaseId);
-    console.log(`Stored image from ${source}: ${s3Url}`);
+    log.debug(`Stored image`, { source, url: s3Url });
     return s3Url;
   } catch (error) {
-    console.error('Failed to upload to S3:', error);
+    log.error('Failed to upload to S3', error);
     return null;
   }
 }

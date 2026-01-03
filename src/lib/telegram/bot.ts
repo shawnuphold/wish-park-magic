@@ -21,7 +21,7 @@ import {
   linkCustomerToFacebook
 } from '../customers/matchCustomer';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { uploadBufferToS3 } from '@/lib/images/releaseImages';
+import { uploadBufferToFolder } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('TelegramBot');
@@ -154,15 +154,19 @@ async function createRequestFromState(
   }
 
   try {
-    // Upload screenshot to S3 if we have it
+    // Upload screenshot to S3 reference-images folder
     let screenshotUrl: string | null = null;
     if (imageBase64) {
-      const buffer = Buffer.from(imageBase64, 'base64');
-      screenshotUrl = await uploadBufferToS3(
-        buffer,
-        `telegram-${Date.now()}`,
-        'image/jpeg'
-      );
+      try {
+        const buffer = Buffer.from(imageBase64, 'base64');
+        screenshotUrl = await uploadBufferToFolder(
+          buffer,
+          'reference-images',
+          'image/jpeg'
+        );
+      } catch (error) {
+        log.error('Failed to upload screenshot to S3', error);
+      }
     }
 
     // Create request

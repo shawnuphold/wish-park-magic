@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 /**
  * AI Image Verification
  * Uses Claude to verify an image matches a product before saving

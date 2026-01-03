@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
@@ -137,6 +137,7 @@ export default function ReleasesPage() {
   const [parkFilter, setParkFilter] = useState<string>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showSourceDialog, setShowSourceDialog] = useState(false);
+  const [ageFilter, setAgeFilter] = useState<string>('30'); // Default to last 30 days
   const { toast } = useToast();
 
   // New release form state
@@ -164,12 +165,19 @@ export default function ReleasesPage() {
 
   const fetchReleases = useCallback(async () => {
     try {
-      // Fetch releases with source counts
+      // Fetch releases
       let query = (supabase as any)
         .from('new_releases')
-        .select('*, release_article_sources(count)')
+        .select('*')
         .is('merged_into_id', null) // Don't show merged releases
         .order('created_at', { ascending: false });
+
+      // Apply age filter
+      if (ageFilter !== 'all') {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - parseInt(ageFilter));
+        query = query.gte('created_at', daysAgo.toISOString());
+      }
 
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
@@ -181,12 +189,7 @@ export default function ReleasesPage() {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Map releases with source count
-      const releasesWithCount = (data || []).map((r: any) => ({
-        ...r,
-        source_count: r.release_article_sources?.[0]?.count || 0,
-      }));
-      setReleases(releasesWithCount);
+      setReleases(data || []);
 
       // Get count of rumored/announced for "needs attention" indicator
       const { count } = await supabase
@@ -198,7 +201,7 @@ export default function ReleasesPage() {
     } catch (error) {
       console.error('Error fetching releases:', error);
     }
-  }, [statusFilter, parkFilter]);
+  }, [statusFilter, parkFilter, ageFilter]);
 
   const fetchSources = async () => {
     try {
@@ -688,6 +691,20 @@ export default function ReleasesPage() {
                     <SelectItem value="disney">Disney</SelectItem>
                     <SelectItem value="universal">Universal</SelectItem>
                     <SelectItem value="seaworld">SeaWorld</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={ageFilter} onValueChange={setAgeFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <Clock className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">Last 7 days</SelectItem>
+                    <SelectItem value="14">Last 14 days</SelectItem>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="60">Last 60 days</SelectItem>
+                    <SelectItem value="90">Last 90 days</SelectItem>
+                    <SelectItem value="all">All time</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

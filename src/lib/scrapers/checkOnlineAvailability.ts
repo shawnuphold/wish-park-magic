@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 /**
  * Online Availability Checker
  *
@@ -7,16 +7,8 @@
  */
 
 import puppeteer, { Browser, Page } from 'puppeteer';
-import { createClient } from '@supabase/supabase-js';
 import { generateCanonicalName } from '../ai/deduplication';
-import type { Database } from '../database.types';
-
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export interface OnlineAvailabilityResult {
   available: boolean;

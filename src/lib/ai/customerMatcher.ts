@@ -1,13 +1,6 @@
-// @ts-nocheck
-import { createClient } from '@supabase/supabase-js';
-import type { Database, Park, ItemCategory } from '@/lib/database.types';
-
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+// Type checking enabled
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import type { Park, ItemCategory } from '@/lib/database.types';
 
 interface CustomerInterest {
   id: string;

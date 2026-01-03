@@ -1,8 +1,8 @@
-// @ts-nocheck
+// Type checking enabled
 "use client";
 
-import { useEffect, useState, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,17 +41,20 @@ import {
   Ban,
   Ticket,
   Globe,
+  Upload,
+  Crop,
+  RefreshCw,
 } from 'lucide-react';
-import type { Park, ItemCategory, ReleaseStatus, ReleaseImage } from '@/lib/database.types';
-import { ReleaseImageGallery } from '@/components/releases/ReleaseImageGallery';
+import type { Park, ItemCategory, ReleaseStatus } from '@/lib/database.types';
 import { useToast } from '@/hooks/use-toast';
+import { ImageCropper } from '@/components/admin/ImageCropper';
 
 interface NewRelease {
   id: string;
   title: string;
   description: string | null;
   image_url: string;
-  images: ReleaseImage[];
+  original_image_url: string | null;  // Full-size original before AI cropping
   source_url: string;
   source: string;
   park: Park;
@@ -106,8 +109,9 @@ const CATEGORIES: ItemCategory[] = [
 
 const PARKS: Park[] = ['disney', 'universal', 'seaworld'];
 
-export default function ReleaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function ReleaseDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
   const router = useRouter();
   const { toast } = useToast();
 
@@ -119,11 +123,18 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
   const [mergeSearch, setMergeSearch] = useState('');
   const [mergeResults, setMergeResults] = useState<SimilarRelease[]>([]);
   const [selectedMergeTarget, setSelectedMergeTarget] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [refetching, setRefetching] = useState(false);
+  const [showCropper, setShowCropper] = useState(false);
+  const [cropImageUrl, setCropImageUrl] = useState<string>('');
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [availableImages, setAvailableImages] = useState<string[]>([]);
 
   // Form state
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    image_url: '',
     status: 'announced' as ReleaseStatus,
     park: 'disney' as Park,
     category: 'other' as ItemCategory,
@@ -133,6 +144,7 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
     projected_release_date: '',
     actual_release_date: '',
     ai_tags: '',
+    location: '',
   });
 
   useEffect(() => {
@@ -153,6 +165,7 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
         setFormData({
           title: release.title,
           description: release.description || '',
+          image_url: release.image_url || '',
           status: release.status || 'announced',
           park: release.park,
           category: release.category,
@@ -162,6 +175,7 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
           projected_release_date: release.projected_release_date || '',
           actual_release_date: release.actual_release_date || '',
           ai_tags: release.ai_tags?.join(', ') || '',
+          location: release.location || '',
         });
 
         // Fetch article sources (table may not exist in generated types yet)
@@ -193,6 +207,7 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
       const updateData: Record<string, unknown> = {
         title: formData.title,
         description: formData.description || null,
+        image_url: formData.image_url || null,
         status: formData.status,
         park: formData.park,
         category: formData.category,
@@ -202,6 +217,7 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
         projected_release_date: formData.projected_release_date || null,
         actual_release_date: formData.actual_release_date || null,
         ai_tags: formData.ai_tags ? formData.ai_tags.split(',').map(t => t.trim()).filter(Boolean) : null,
+        location: formData.location || null,
       };
 
       // Auto-set dates based on status
@@ -353,6 +369,120 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
 
   const getStatusColor = (status: ReleaseStatus) => {
     return STATUS_OPTIONS.find(s => s.value === status)?.color || 'bg-gray-500';
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      // Get presigned URL - use releaseId to upload to public path releases/{id}/
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type,
+          releaseId: id,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get upload URL');
+      }
+
+      const { uploadUrl, fileUrl } = await response.json();
+
+      // Upload to S3
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      // Update form with new URL
+      setFormData({ ...formData, image_url: fileUrl });
+
+      // Save to database immediately
+      const { error } = await supabase
+        .from('new_releases')
+        .update({ image_url: fileUrl })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({ title: 'Image uploaded and saved' });
+      router.refresh();
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: 'Upload Failed',
+        description: error instanceof Error ? error.message : 'Could not upload image',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRefetchFromSource = async () => {
+    if (!release?.source_url) return;
+
+    setRefetching(true);
+    try {
+      // Call API to fetch images from source without AI cropping
+      const response = await fetch('/api/releases/refetch-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          releaseId: id,
+          sourceUrl: release.source_url,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch image');
+      }
+
+      const { imageUrls } = await response.json();
+
+      if (imageUrls && imageUrls.length > 0) {
+        // Show image picker dialog to let user choose
+        setAvailableImages(imageUrls);
+        setShowImagePicker(true);
+        toast({
+          title: 'Images found',
+          description: `Found ${imageUrls.length} image(s). Select one to crop.`
+        });
+      } else {
+        toast({
+          title: 'No images found',
+          description: 'Could not find any images at the source URL',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Re-fetch error:', error);
+      toast({
+        title: 'Re-fetch Failed',
+        description: error instanceof Error ? error.message : 'Could not fetch from source',
+        variant: 'destructive',
+      });
+    } finally {
+      setRefetching(false);
+    }
+  };
+
+  const handleSelectImage = (imageUrl: string) => {
+    setShowImagePicker(false);
+    setCropImageUrl(imageUrl);
+    setShowCropper(true);
   };
 
   if (loading) {
@@ -542,6 +672,131 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
                   placeholder="mickey, halloween, spirit jersey"
                 />
               </div>
+              <div>
+                <Label>Image</Label>
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={uploading}
+                    />
+                    <div className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted transition-colors">
+                      {uploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
+                      <span>{uploading ? 'Uploading...' : 'Upload Image'}</span>
+                    </div>
+                  </label>
+                  {formData.image_url && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setCropImageUrl(formData.image_url);
+                        setShowCropper(true);
+                      }}
+                    >
+                      <Crop className="w-4 h-4 mr-2" />
+                      Crop Image
+                    </Button>
+                  )}
+                  {release?.original_image_url && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-amber-500 text-amber-600 hover:bg-amber-50"
+                      onClick={() => {
+                        setCropImageUrl(release.original_image_url!);
+                        setShowCropper(true);
+                      }}
+                    >
+                      <Crop className="w-4 h-4 mr-2" />
+                      Re-crop from Original
+                    </Button>
+                  )}
+                  {release?.source_url && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                      disabled={refetching}
+                      onClick={handleRefetchFromSource}
+                    >
+                      {refetching ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                      )}
+                      Re-fetch from Source
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={formData.image_url}
+                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                    onBlur={async (e) => {
+                      const newUrl = e.target.value;
+                      // Save to database when URL is changed and field loses focus
+                      if (newUrl !== release?.image_url) {
+                        try {
+                          const { error } = await supabase
+                            .from('new_releases')
+                            .update({ image_url: newUrl || null })
+                            .eq('id', id);
+                          if (error) throw error;
+                          toast({ title: 'Image URL saved' });
+                          router.refresh();
+                        } catch (err) {
+                          console.error('Failed to save image URL:', err);
+                          toast({
+                            title: 'Error',
+                            description: 'Failed to save image URL',
+                            variant: 'destructive',
+                          });
+                        }
+                      }
+                    }}
+                    placeholder="Or paste image URL here..."
+                    className="flex-1"
+                  />
+                  {formData.image_url && (
+                    <a
+                      href={formData.image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center px-3 border rounded-md hover:bg-muted"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+                {formData.image_url && (
+                  <div className="mt-2 relative aspect-video w-full max-w-xs bg-muted rounded-lg overflow-hidden">
+                    <img
+                      src={formData.image_url}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%23ccc" width="100" height="100"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23666">Error</text></svg>';
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label>Location (where to find in park)</Label>
+                <Input
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="e.g., Emporium on Main Street, World of Disney"
+                />
+              </div>
               <div className="flex gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -614,20 +869,63 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Images */}
+          {/* Current Image */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Images</CardTitle>
+              <CardTitle className="text-sm">Current Image</CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <ReleaseImageGallery
-                images={(release.images as ReleaseImage[]) || []}
-                isAdmin={true}
-                showBadges={true}
-                className="aspect-square"
-              />
+              {release.image_url ? (
+                <div className="aspect-square bg-muted rounded-lg overflow-hidden">
+                  <img
+                    src={release.image_url}
+                    alt={release.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="aspect-square bg-muted rounded-lg flex items-center justify-center">
+                  <p className="text-muted-foreground text-sm">No image</p>
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          {/* Original Image (for re-cropping) */}
+          {release.original_image_url && (
+            <Card className="border-amber-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Crop className="w-4 h-4 text-amber-500" />
+                  Original Image
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Full-size image for manual re-cropping
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 space-y-2">
+                <div className="aspect-square bg-muted rounded-lg overflow-hidden">
+                  <img
+                    src={release.original_image_url}
+                    alt="Original"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-amber-500 text-amber-600 hover:bg-amber-50"
+                  onClick={() => {
+                    setCropImageUrl(release.original_image_url!);
+                    setShowCropper(true);
+                  }}
+                >
+                  <Crop className="w-4 h-4 mr-2" />
+                  Re-crop from Original
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Online Availability */}
           <Card>
@@ -826,6 +1124,85 @@ export default function ReleaseDetailPage({ params }: { params: Promise<{ id: st
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Image Picker Dialog */}
+      <Dialog open={showImagePicker} onOpenChange={setShowImagePicker}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-5 h-5" />
+              Select an Image
+            </DialogTitle>
+            <DialogDescription>
+              Choose an image from the source article to crop. Found {availableImages.length} image(s).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
+            {availableImages.map((imgUrl, index) => (
+              <div
+                key={index}
+                className="relative aspect-square bg-muted rounded-lg overflow-hidden cursor-pointer border-2 border-transparent hover:border-gold transition-colors group"
+                onClick={() => handleSelectImage(imgUrl)}
+              >
+                <img
+                  src={`/api/image?url=${encodeURIComponent(imgUrl)}&proxy=true`}
+                  alt={`Image ${index + 1}`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%23ccc" width="100" height="100"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-size="10">Failed</text></svg>';
+                  }}
+                />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Button variant="secondary" size="sm">
+                    <Crop className="w-4 h-4 mr-2" />
+                    Select & Crop
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowImagePicker(false)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Cropper */}
+      {showCropper && cropImageUrl && (
+        <ImageCropper
+          imageUrl={cropImageUrl}
+          open={showCropper}
+          releaseId={id}
+          onClose={() => {
+            setShowCropper(false);
+            setCropImageUrl('');
+          }}
+          onCropComplete={async (croppedUrl) => {
+            setFormData({ ...formData, image_url: croppedUrl });
+            setShowCropper(false);
+            setCropImageUrl('');
+
+            // Save cropped image to database immediately
+            try {
+              const { error } = await supabase
+                .from('new_releases')
+                .update({ image_url: croppedUrl })
+                .eq('id', id);
+
+              if (error) throw error;
+              toast({ title: 'Cropped image saved successfully' });
+              router.refresh();
+            } catch (err) {
+              console.error('Failed to save cropped image:', err);
+              toast({
+                title: 'Error',
+                description: 'Cropped but failed to save. Click Save to retry.',
+                variant: 'destructive'
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

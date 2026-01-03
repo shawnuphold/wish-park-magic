@@ -1,33 +1,32 @@
-// @ts-nocheck
+// Type checking enabled
 import Parser from 'rss-parser';
 import * as cheerio from 'cheerio';
-import { createClient } from '@supabase/supabase-js';
-import { parseArticleForProducts, type ParsedProduct } from './parseArticle';
+import { parseArticleForProducts } from './parseArticle';
 import { generateCanonicalName } from './deduplication';
-import { downloadAndStoreImage, uploadBufferToS3 } from '@/lib/images/releaseImages';
+import { downloadAndStoreImage, uploadBufferToS3, storeOriginalImage, extractImagesFromHtml } from '@/lib/images/releaseImages';
 import { findBestImageForProduct } from '@/lib/images/verifyImage';
 import { processCompositeImage } from '@/lib/images/smartCropper';
-import type { Database, Park, ItemCategory, ReleaseStatus } from '@/lib/database.types';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { createLogger } from '@/lib/logger';
+import type { Park, ItemCategory, ReleaseStatus } from '@/lib/database.types';
+
+const log = createLogger('FeedFetcher');
 
 const parser = new Parser({
   timeout: 10000,
   headers: {
     'User-Agent': 'EnchantedParkPickups/1.0 (merchandise-tracker)',
   },
+  customFields: {
+    item: [['content:encoded', 'contentEncoded']],
+  },
 });
-
-// Create admin Supabase client for server-side operations
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 interface FeedItem {
   title?: string;
   link?: string;
   content?: string;
+  contentEncoded?: string; // Full HTML content from content:encoded
   contentSnippet?: string;
   pubDate?: string;
   enclosure?: { url?: string };
@@ -50,13 +49,14 @@ export async function fetchRSSFeed(url: string): Promise<FeedItem[]> {
     return feed.items.map(item => ({
       title: item.title,
       link: item.link,
-      content: item.content || item['content:encoded'] || item.contentSnippet,
+      content: item.content || item.contentSnippet,
+      contentEncoded: (item as any).contentEncoded, // Full HTML with images from content:encoded
       contentSnippet: item.contentSnippet,
       pubDate: item.pubDate || item.isoDate,
       enclosure: item.enclosure,
     }));
   } catch (error) {
-    console.error(`Error fetching RSS feed ${url}:`, error);
+    log.error(`Error fetching RSS feed ${url}`, error);
     throw error;
   }
 }
@@ -65,7 +65,12 @@ export async function scrapeArticle(url: string): Promise<{ content: string; ima
   try {
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; EnchantedParkPickups/1.0)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
       },
     });
 
@@ -133,7 +138,7 @@ export async function scrapeArticle(url: string): Promise<{ content: string; ima
       images: images.slice(0, 20),
     };
   } catch (error) {
-    console.error(`Error scraping article ${url}:`, error);
+    log.error(`Error scraping article ${url}`, error);
     throw error;
   }
 }
@@ -199,21 +204,21 @@ export async function processArticle(
     const eligibleProducts = parseResult.products.filter(p => !californiaParkCodes.includes(p.park));
 
     // Try smart cropping for composite images when we have multiple products
-    // Maps product name to cropped image buffer
-    const croppedImages = new Map<string, Buffer>();
+    // Maps product name to { buffer, sourceUrl }
+    const croppedImages = new Map<string, { buffer: Buffer; sourceUrl: string }>();
 
     if (eligibleProducts.length > 1 && articleImages.length > 0) {
       const productNames = eligibleProducts.map(p => p.name);
-      console.log(`  📐 Checking for composite images with ${productNames.length} products...`);
+      log.debug(`Checking for composite images`, { productCount: productNames.length });
 
       // Try each article image as a potential composite
-      for (const imageUrl of articleImages.slice(0, 5)) {
+      for (const compositeImageUrl of articleImages.slice(0, 5)) {
         try {
-          const cropped = await processCompositeImage(imageUrl, productNames);
+          const cropped = await processCompositeImage(compositeImageUrl, productNames);
           if (cropped.size > 0) {
-            console.log(`  ✂️ Found composite with ${cropped.size} products`);
+            log.debug(`Found composite image`, { productCount: cropped.size });
             for (const [name, buffer] of cropped) {
-              croppedImages.set(name, buffer);
+              croppedImages.set(name, { buffer, sourceUrl: compositeImageUrl });
             }
             break; // Found a composite, stop checking other images
           }
@@ -224,34 +229,43 @@ export async function processArticle(
     }
 
     for (const product of parseResult.products) {
-      // Skip California parks - we only service Orlando
-      if (californiaParkCodes.includes(product.park)) {
-        console.log(`Skipping California item: ${product.name} (${product.park})`);
+      // Skip online-only products - we only do park pickups
+      if (product.is_online_only) {
+        log.debug(`Skipping online-only item`, { name: product.name });
         continue;
       }
 
-      // Skip non-Disney/Universal properties (only Orlando theme parks)
+      // Skip California parks - we only service Orlando
+      if (californiaParkCodes.includes(product.park)) {
+        log.debug(`Skipping California item`, { name: product.name, park: product.park });
+        continue;
+      }
+
+      // Skip non-Orlando theme park properties
+      // Note: SeaWorld Orlando IS included (removed from exclusion list)
       // Note: Nickelodeon/SpongeBob is at Universal Orlando, so we keep those
-      const nonThemeParkBrands = ['warner bros', 'six flags', 'cedar fair', 'seaworld', 'busch gardens'];
+      const nonThemeParkBrands = ['warner bros', 'six flags', 'cedar fair', 'busch gardens', 'legoland'];
       const lowerProductName = product.name.toLowerCase();
       const isNonThemePark = nonThemeParkBrands.some(brand => lowerProductName.includes(brand));
       if (isNonThemePark) {
-        console.log(`Skipping non-theme-park item: ${product.name}`);
+        log.debug(`Skipping non-theme-park item`, { name: product.name });
         continue;
       }
 
       // Check if we have a cropped image from composite image processing
       let croppedBuffer: Buffer | undefined = undefined;
+      let originalSourceUrl: string | undefined = undefined;
       const croppedForProduct = croppedImages.get(product.name);
       if (croppedForProduct) {
-        console.log(`  ✂️ Using cropped image for: ${product.name}`);
-        croppedBuffer = croppedForProduct;
+        log.debug(`Using cropped image`, { name: product.name });
+        croppedBuffer = croppedForProduct.buffer;
+        originalSourceUrl = croppedForProduct.sourceUrl;
       }
 
       // Use AI to find the best matching image for this product (if no cropped image)
       let imageUrl = product.image_url || '';
       if (!croppedBuffer && !imageUrl && articleImages.length > 0) {
-        console.log(`  🔍 AI searching for image: ${product.name}`);
+        log.debug(`AI searching for image`, { name: product.name });
         const bestMatch = await findBestImageForProduct(
           articleImages,
           product.name,
@@ -259,62 +273,92 @@ export async function processArticle(
         );
         if (bestMatch) {
           imageUrl = bestMatch;
-          console.log(`  ✓ AI found matching image`);
+          log.debug(`AI found matching image`);
         } else {
-          console.log(`  ⚠️ No AI-verified image found, skipping image for this product`);
+          log.debug(`No AI-verified image found, skipping image for this product`);
         }
       }
 
       // Generate canonical name for foolproof duplicate detection
       const productCanonical = generateCanonicalName(product.name);
 
-      // Check for existing release by canonical_name (primary) or exact title match (fallback)
-      const { data: existingByCanonical } = await supabase
-        .from('new_releases')
-        .select('id, title, image_url, canonical_name')
-        .eq('canonical_name', productCanonical)
-        .is('merged_into_id', null)
-        .single();
+      // Use comprehensive duplicate check function (checks URL, image, title similarity, word overlap)
+      const { data: dupCheck, error: dupError } = await supabase
+        .rpc('is_duplicate_release', {
+          p_title: product.name,
+          p_source_url: articleUrl,
+          p_image_url: imageUrl || null
+        });
 
-      let existingRelease = existingByCanonical;
+      let existingRelease: { id: string; title: string; image_url: string | null; canonical_name: string | null } | null = null;
 
-      // If no canonical match, try exact title match as fallback
-      if (!existingRelease) {
-        const { data: existingByTitle } = await supabase
+      if (dupCheck && dupCheck.length > 0 && dupCheck[0].is_duplicate) {
+        // Fetch the existing release details
+        const { data: existingData } = await supabase
           .from('new_releases')
           .select('id, title, image_url, canonical_name')
-          .ilike('title', product.name)
-          .is('merged_into_id', null)
+          .eq('id', dupCheck[0].existing_id)
           .single();
-        existingRelease = existingByTitle;
+
+        if (existingData) {
+          existingRelease = existingData;
+          log.debug(`Duplicate detected via ${dupCheck[0].match_reason}`, {
+            name: product.name,
+            existingTitle: existingRelease.title,
+            similarity: dupCheck[0].similarity_score
+          });
+        }
       }
 
-      if (existingRelease) {
-        console.log(`    Duplicate detected: "${product.name}" matches "${existingRelease.title}" (canonical: ${productCanonical})`);
+      // Fallback: Also check canonical_name in case the RPC fails
+      if (!existingRelease && !dupError) {
+        const { data: existingByCanonical } = await supabase
+          .from('new_releases')
+          .select('id, title, image_url, canonical_name')
+          .eq('canonical_name', productCanonical)
+          .is('merged_into_id', null)
+          .single();
+
+        if (existingByCanonical) {
+          existingRelease = existingByCanonical;
+          log.debug(`Duplicate detected via canonical_name fallback`, { name: product.name, existingTitle: existingRelease.title });
+        }
       }
 
       if (existingRelease) {
         // Product exists - update image if needed
         if (!existingRelease.image_url && (croppedBuffer || imageUrl)) {
           let s3Url: string | null = null;
+          let originalS3Url: string | null = null;
+
           if (croppedBuffer) {
             // Upload cropped buffer directly
             s3Url = await uploadBufferToS3(croppedBuffer, existingRelease.id, 'image/jpeg');
+            // Also store the original uncropped image for manual re-cropping
+            if (originalSourceUrl) {
+              log.debug(`Storing original image for manual re-crop`);
+              originalS3Url = await storeOriginalImage(originalSourceUrl, existingRelease.id);
+            }
           } else if (imageUrl) {
             s3Url = await downloadAndStoreImage(imageUrl, existingRelease.id, 'blog');
           }
+
           if (s3Url) {
+            const updateData: { image_url: string; original_image_url?: string } = {
+              image_url: s3Url,
+            };
+            if (originalS3Url) {
+              updateData.original_image_url = originalS3Url;
+            }
             await supabase
               .from('new_releases')
-              .update({
-                image_url: s3Url,
-              })
+              .update(updateData)
               .eq('id', existingRelease.id);
           }
         }
 
         updatedReleases++;
-        console.log(`Updated existing release: ${product.name}`);
+        log.info(`Updated existing release`, { name: product.name });
       } else {
         // New product - create release record
         // Nickelodeon/SpongeBob items are Universal (not Disney)
@@ -344,6 +388,7 @@ export async function processArticle(
             status: product.release_status as ReleaseStatus,
             article_url: articleUrl,
             location: product.park,
+            locations: product.locations || [],  // Structured location data from AI
           })
           .select('id')
           .single();
@@ -352,26 +397,38 @@ export async function processArticle(
           // Download and store article image to S3
           if (croppedBuffer || imageUrl) {
             let s3Url: string | null = null;
+            let originalS3Url: string | null = null;
+
             if (croppedBuffer) {
               // Upload cropped buffer directly
               s3Url = await uploadBufferToS3(croppedBuffer, newRelease.id, 'image/jpeg');
+              // Also store the original uncropped image for manual re-cropping
+              if (originalSourceUrl) {
+                log.debug(`Storing original image for manual re-crop`);
+                originalS3Url = await storeOriginalImage(originalSourceUrl, newRelease.id);
+              }
             } else if (imageUrl) {
               s3Url = await downloadAndStoreImage(imageUrl, newRelease.id, 'blog');
             }
+
             if (s3Url) {
+              const updateData: { image_url: string; original_image_url?: string } = {
+                image_url: s3Url,
+              };
+              if (originalS3Url) {
+                updateData.original_image_url = originalS3Url;
+              }
               await supabase
                 .from('new_releases')
-                .update({
-                  image_url: s3Url,
-                })
+                .update(updateData)
                 .eq('id', newRelease.id);
             }
           }
 
           newReleases++;
-          console.log(`Created new release: ${product.name}`);
+          log.info(`Created new release`, { name: product.name });
         } else if (error) {
-          console.error('Error inserting release:', error);
+          log.error('Error inserting release', error);
         }
       }
     }
@@ -414,9 +471,12 @@ export async function processFeedSource(source: FeedSource): Promise<{
         const lowerTitle = (item.title || '').toLowerCase();
         const merchandiseKeywords = [
           'merchandise', 'merch', 'loungefly', 'spirit jersey', 'ears',
-          'popcorn bucket', 'sipper', 'pin', 'plush', 'mug', 'tumbler',
-          'collection', 'exclusive', 'limited', 'release', 'arriving',
-          'now available', 'coming soon', 'new at', 'shop', 'store'
+          'popcorn bucket', 'sipper', 'pin', 'plush', 'squishmallow', 'mug', 'tumbler',
+          'collection', 'exclusive', 'limited', 'release', 'arriving', 'debuts',
+          'now available', 'coming soon', 'new at', 'shop', 'store',
+          'sweatshirt', 'hoodie', 'jacket', 't-shirt', 'tee', 'shirt',
+          'backpack', 'bag', 'purse', 'wallet', 'hat', 'cap', 'headband',
+          'ornament', 'figure', 'figurine', 'toy', 'doll', 'stuffed'
         ];
 
         const isMerchRelated = merchandiseKeywords.some(kw => lowerTitle.includes(kw));
@@ -427,10 +487,13 @@ export async function processFeedSource(source: FeedSource): Promise<{
 
         // Skip non-Orlando articles (Orlando-only service)
         // Note: "70th" refers to Disneyland's 70th anniversary (1955-2025), WDW opened in 1971
-        const nonOrlandoKeywords = ['disneyland', 'california adventure', 'dca', 'anaheim', 'universal hollywood', 'universal studios hollywood', '70th anniversary', 'disneyland 70', 'times square', 'nyc', 'new york'];
-        const isNonOrlandoArticle = nonOrlandoKeywords.some(kw => lowerTitle.includes(kw));
+        // Use word boundary matching for short keywords to avoid false positives (e.g., "dca" matching "wildcats")
+        const nonOrlandoKeywords = ['disneyland', 'california adventure', 'anaheim', 'universal hollywood', 'universal studios hollywood', '70th anniversary', 'disneyland 70', 'times square', 'new york'];
+        const nonOrlandoShortKeywords = ['dca', 'nyc']; // These need word boundary matching
+        const isNonOrlandoArticle = nonOrlandoKeywords.some(kw => lowerTitle.includes(kw)) ||
+          nonOrlandoShortKeywords.some(kw => new RegExp(`\\b${kw}\\b`).test(lowerTitle));
         if (isNonOrlandoArticle) {
-          console.log(`Skipping non-Orlando article: ${item.title}`);
+          log.debug(`Skipping non-Orlando article`, { title: item.title });
           continue;
         }
 
@@ -438,11 +501,56 @@ export async function processFeedSource(source: FeedSource): Promise<{
         const discountKeywords = ['discount', 'sale', 'bogo', 'buy one get one', '% off', 'clearance', 'markdown', 'price cut', 'deal', 'save on'];
         const isDiscountArticle = discountKeywords.some(kw => lowerTitle.includes(kw));
         if (isDiscountArticle) {
-          console.log(`Skipping discount/sale article: ${item.title}`);
+          log.debug(`Skipping discount/sale article`, { title: item.title });
           continue;
         }
 
-        const { content, images } = await scrapeArticle(item.link);
+        // Skip non-park retail articles (Aldi, Target, Walmart, Five Below, etc.)
+        // Only park/resort merchandise is valid - we're an Orlando park pickup service
+        const nonParkRetailers = [
+          // Discount/variety stores
+          'aldi', 'target', 'walmart', 'costco', 'five below', 'dollar tree', 'dollar general',
+          // Fashion retailers
+          'boxlunch', 'hot topic', 'kohls', 'jcpenney', 'macy', 'nordstrom', 'primark',
+          // Online retailers
+          'amazon', 'shopdisney.com',
+          // Fast food (movie tie-ins)
+          'burger king', 'mcdonalds', 'wendy', 'taco bell', 'kfc', 'chick-fil-a', 'popeyes',
+          // Grocery stores
+          'publix', 'kroger', 'safeway', 'trader joe',
+        ];
+        const isNonParkRetail = nonParkRetailers.some(kw => lowerTitle.includes(kw));
+        if (isNonParkRetail) {
+          log.debug(`Skipping non-park retail article`, { title: item.title });
+          continue;
+        }
+
+        // Skip articles that are specifically about shopDisney online-only releases
+        // These items are available online, not in parks - our service is for park pickups only
+        const onlineOnlyKeywords = ['shopdisney exclusive', 'shopdisney.com', 'available on shopdisney', 'online exclusive', 'web exclusive'];
+        const isOnlineOnlyArticle = onlineOnlyKeywords.some(kw => lowerTitle.includes(kw));
+        if (isOnlineOnlyArticle) {
+          log.debug(`Skipping online-only article`, { title: item.title });
+          continue;
+        }
+
+        let content: string;
+        let images: string[];
+
+        try {
+          const scraped = await scrapeArticle(item.link);
+          content = scraped.content;
+          images = scraped.images;
+        } catch (scrapeError) {
+          // Fallback to RSS content when scraping fails (e.g., 403 errors)
+          log.warn(`Scrape failed, using RSS content fallback`, { title: item.title });
+          // Use contentEncoded (full HTML with images) first, then fall back to content/description
+          const rssContent = item.contentEncoded || item.content || '';
+          content = rssContent;
+          // Extract images from RSS content HTML
+          images = extractImagesFromHtml(rssContent, item.link || '');
+          log.debug(`Found images from RSS content`, { imageCount: images.length, contentLength: item.contentEncoded ? item.contentEncoded.length : 0 });
+        }
 
         const result = await processArticle(
           source,
@@ -501,57 +609,81 @@ export async function processAllSources(): Promise<{
 }> {
   const supabase = getSupabaseAdmin();
 
-  // Use feed_sources table
-  const { data: sources, error } = await supabase
-    .from('feed_sources')
-    .select('*')
-    .eq('is_active', true);
+  // Acquire processing lock to prevent concurrent runs
+  const lockName = 'feed_processing';
+  const { data: lockAcquired, error: lockError } = await supabase
+    .rpc('acquire_feed_lock', { p_lock_name: lockName, p_timeout_minutes: 30 });
 
-  if (error || !sources) {
+  if (lockError || !lockAcquired) {
+    log.warn('Could not acquire processing lock - another process may be running');
     return {
       sourcesProcessed: 0,
       totalArticles: 0,
       newReleases: 0,
       updatedReleases: 0,
-      errors: [error?.message || 'No sources found']
+      errors: ['Could not acquire processing lock - another process is running']
     };
   }
 
-  const now = new Date();
-  const allErrors: string[] = [];
-  let totalArticles = 0;
-  let totalNew = 0;
-  let totalUpdated = 0;
-  let sourcesProcessed = 0;
+  log.info('Processing lock acquired');
 
-  for (const source of sources) {
-    // Skip time check if FORCE_RECHECK is set
-    if (!process.env.FORCE_RECHECK && source.last_checked) {
-      const lastChecked = new Date(source.last_checked);
-      const hoursSinceCheck = (now.getTime() - lastChecked.getTime()) / (1000 * 60 * 60);
+  try {
+    // Use feed_sources table
+    const { data: sources, error } = await supabase
+      .from('feed_sources')
+      .select('*')
+      .eq('is_active', true);
 
-      if (hoursSinceCheck < source.check_frequency_hours) {
-        continue;
-      }
+    if (error || !sources) {
+      return {
+        sourcesProcessed: 0,
+        totalArticles: 0,
+        newReleases: 0,
+        updatedReleases: 0,
+        errors: [error?.message || 'No sources found']
+      };
     }
 
-    console.log(`Processing source: ${source.name}`);
-    const result = await processFeedSource(source as FeedSource);
+    const now = new Date();
+    const allErrors: string[] = [];
+    let totalArticles = 0;
+    let totalNew = 0;
+    let totalUpdated = 0;
+    let sourcesProcessed = 0;
 
-    sourcesProcessed++;
-    totalArticles += result.articlesProcessed;
-    totalNew += result.newReleases;
-    totalUpdated += result.updatedReleases;
-    allErrors.push(...result.errors.map(e => `[${source.name}] ${e}`));
+    for (const source of sources) {
+      // Skip time check if FORCE_RECHECK is set
+      if (!process.env.FORCE_RECHECK && source.last_checked) {
+        const lastChecked = new Date(source.last_checked);
+        const hoursSinceCheck = (now.getTime() - lastChecked.getTime()) / (1000 * 60 * 60);
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+        if (hoursSinceCheck < source.check_frequency_hours) {
+          continue;
+        }
+      }
+
+      log.info(`Processing source`, { name: source.name });
+      const result = await processFeedSource(source as FeedSource);
+
+      sourcesProcessed++;
+      totalArticles += result.articlesProcessed;
+      totalNew += result.newReleases;
+      totalUpdated += result.updatedReleases;
+      allErrors.push(...result.errors.map(e => `[${source.name}] ${e}`));
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    return {
+      sourcesProcessed,
+      totalArticles,
+      newReleases: totalNew,
+      updatedReleases: totalUpdated,
+      errors: allErrors,
+    };
+  } finally {
+    // Always release the lock when done
+    await supabase.rpc('release_feed_lock', { p_lock_name: lockName });
+    log.info('Processing lock released');
   }
-
-  return {
-    sourcesProcessed,
-    totalArticles,
-    newReleases: totalNew,
-    updatedReleases: totalUpdated,
-    errors: allErrors,
-  };
 }

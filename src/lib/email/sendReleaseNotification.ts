@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 /**
  * Release Notification System
  *
@@ -6,28 +6,20 @@
  * that match their preferences.
  */
 
-import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from './mailer';
 import {
   generateSubject,
   generateEmailHtml,
   generateEmailText,
 } from './templates/releaseNotification';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type {
-  Database,
   Park,
   ItemCategory,
   NotificationPreferences,
   ReleaseImage,
 } from '@/lib/database.types';
 import { getPrimaryImageUrl } from '@/lib/images/releaseImages';
-
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 interface Release {
   id: string;

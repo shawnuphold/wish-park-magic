@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 /**
  * Customer Notification System
  *
@@ -6,7 +6,7 @@
  * based on their preferences.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/logger';
 import { sendEmail } from '../email/mailer';
 import {
   generateSubject,
@@ -14,20 +14,15 @@ import {
   generateEmailText,
 } from '../email/templates/releaseNotification';
 import { getPrimaryImageUrl } from '../images/releaseImages';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type {
-  Database,
   Park,
   ItemCategory,
   NotificationPreferences,
   ReleaseImage,
 } from '@/lib/database.types';
 
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+const log = createLogger('Notifications');
 
 interface Release {
   id: string;
@@ -96,7 +91,7 @@ export async function findNewReleasesToNotify(hoursBack: number = 24): Promise<R
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching new releases:', error);
+    log.error('Error fetching new releases', error);
     return [];
   }
 
@@ -126,7 +121,7 @@ export async function getEligibleCustomers(): Promise<Customer[]> {
     .select('id, email, name, notification_preferences');
 
   if (error) {
-    console.error('Error fetching customers:', error);
+    log.error('Error fetching customers', error);
     return [];
   }
 
@@ -142,21 +137,66 @@ export async function getEligibleCustomers(): Promise<Customer[]> {
 }
 
 /**
- * Check if a notification has already been sent
+ * Batch load all sent notifications for given releases and customers.
+ * Returns a Set of "releaseId:customerId" keys for O(1) lookup.
+ * This avoids the N+1 query problem when checking many release/customer pairs.
+ */
+async function getSentNotifications(
+  releaseIds: string[],
+  customerIds: string[]
+): Promise<Set<string>> {
+  if (releaseIds.length === 0 || customerIds.length === 0) {
+    return new Set();
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from('release_notifications')
+    .select('release_id, customer_id')
+    .in('release_id', releaseIds)
+    .in('customer_id', customerIds);
+
+  if (error) {
+    log.error('Error fetching sent notifications', error);
+    return new Set();
+  }
+
+  // Create a Set of "releaseId:customerId" keys for O(1) lookup
+  const sentSet = new Set<string>();
+  for (const row of data || []) {
+    sentSet.add(`${row.release_id}:${row.customer_id}`);
+  }
+
+  return sentSet;
+}
+
+/**
+ * Check if a notification key exists in the pre-loaded set
+ */
+function wasNotificationSentToCustomer(
+  sentNotifications: Set<string>,
+  releaseId: string,
+  customerId: string
+): boolean {
+  return sentNotifications.has(`${releaseId}:${customerId}`);
+}
+
+/**
+ * Check if a notification was already sent (single query version)
+ * Used by notifyForRelease() for single-release notifications.
  */
 async function wasNotificationSent(
   releaseId: string,
   customerId: string
 ): Promise<boolean> {
   const supabase = getSupabaseAdmin();
-
   const { data } = await supabase
     .from('release_notifications')
     .select('id')
     .eq('release_id', releaseId)
     .eq('customer_id', customerId)
-    .single();
-
+    .maybeSingle();
   return !!data;
 }
 
@@ -188,11 +228,17 @@ export async function sendNotifications(hoursBack: number = 24): Promise<{
   const releases = await findNewReleasesToNotify(hoursBack);
   const customers = await getEligibleCustomers();
 
-  console.log(`Found ${releases.length} new releases and ${customers.length} eligible customers`);
+  log.info('Processing notifications', { releaseCount: releases.length, customerCount: customers.length });
 
   if (releases.length === 0 || customers.length === 0) {
     return { sent: 0, skipped: 0, errors: [] };
   }
+
+  // Batch load all sent notifications in ONE query (fixes N+1 problem)
+  const releaseIds = releases.map(r => r.id);
+  const customerIds = customers.map(c => c.id);
+  const sentNotifications = await getSentNotifications(releaseIds, customerIds);
+  log.debug('Pre-loaded existing notifications', { count: sentNotifications.size });
 
   let sent = 0;
   let skipped = 0;
@@ -206,8 +252,8 @@ export async function sendNotifications(hoursBack: number = 24): Promise<{
     const matchingReleases: typeof releases = [];
 
     for (const release of releases) {
-      // Check if already notified
-      if (await wasNotificationSent(release.id, customer.id)) {
+      // Check if already notified (O(1) Set lookup instead of DB query)
+      if (wasNotificationSentToCustomer(sentNotifications, release.id, customer.id)) {
         skipped++;
         continue;
       }
@@ -260,11 +306,11 @@ export async function sendNotifications(hoursBack: number = 24): Promise<{
       }
 
       sent++;
-      console.log(`Sent notification to ${customer.email} for ${matchingReleases.length} release(s)`);
+      log.info('Notification sent', { email: customer.email, releaseCount: matchingReleases.length });
     } catch (error) {
       const message = `Failed to notify ${customer.email}: ${error instanceof Error ? error.message : 'Unknown error'}`;
       errors.push(message);
-      console.error(message);
+      log.error(message);
     }
 
     // Rate limiting
@@ -348,7 +394,7 @@ export async function notifyForRelease(releaseId: string): Promise<{
 
       await recordNotification(releaseId, customer.id, subject);
       sent++;
-      console.log(`Sent notification to ${customer.email} for ${release.title}`);
+      log.info('Notification sent', { email: customer.email, release: release.title });
     } catch (error) {
       errors.push(`Failed to notify ${customer.email}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

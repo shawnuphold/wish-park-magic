@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 /**
  * Smart Image Cropper
  * Uses Claude to identify individual products in composite images and crop them

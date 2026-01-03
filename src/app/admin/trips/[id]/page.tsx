@@ -23,6 +23,7 @@ import {
   Play,
   CheckCircle,
   XCircle,
+  Printer,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Park } from '@/lib/database.types';
@@ -31,7 +32,7 @@ interface TripRequest {
   id: string;
   status: string;
   customer: { name: string };
-  items: { id: string; name: string; status: string; park: Park }[];
+  items: { id: string; name: string; status: string; park: Park; store_name: string | null; land_name: string | null }[];
 }
 
 interface ShoppingTrip {
@@ -84,7 +85,7 @@ export default function TripDetailPage() {
           id,
           status,
           customer:customers(name),
-          items:request_items(id, name, status, park)
+          items:request_items(id, name, status, park, store_name, land_name)
         `)
         .eq('shopping_trip_id', id);
 
@@ -207,8 +208,11 @@ export default function TripDetailPage() {
     );
   }
 
-  // Group items by park for easy shopping
-  const itemsByPark: Record<Park, { requestId: string; customerName: string; item: TripRequest['items'][0] }[]> = {
+  // Group items by park and then by store for easy shopping
+  type GroupedItem = { requestId: string; customerName: string; item: TripRequest['items'][0] };
+  type StoreGroup = { store: string; land: string | null; items: GroupedItem[] };
+
+  const itemsByParkAndStore: Record<Park, StoreGroup[]> = {
     disney: [],
     universal: [],
     seaworld: [],
@@ -217,7 +221,17 @@ export default function TripDetailPage() {
   trip.requests.forEach((request) => {
     request.items.forEach((item) => {
       if (trip.parks.includes(item.park)) {
-        itemsByPark[item.park].push({
+        const storeName = item.store_name || 'General / Unknown Location';
+        const landName = item.land_name || null;
+
+        // Find or create store group
+        let storeGroup = itemsByParkAndStore[item.park].find(g => g.store === storeName);
+        if (!storeGroup) {
+          storeGroup = { store: storeName, land: landName, items: [] };
+          itemsByParkAndStore[item.park].push(storeGroup);
+        }
+
+        storeGroup.items.push({
           requestId: request.id,
           customerName: request.customer?.name || 'Unknown',
           item,
@@ -226,9 +240,40 @@ export default function TripDetailPage() {
     });
   });
 
+  // Sort store groups alphabetically within each park (with "General" last)
+  Object.keys(itemsByParkAndStore).forEach((park) => {
+    itemsByParkAndStore[park as Park].sort((a, b) => {
+      if (a.store.startsWith('General')) return 1;
+      if (b.store.startsWith('General')) return -1;
+      return a.store.localeCompare(b.store);
+    });
+  });
+
+  // For backwards compatibility - flat list of items by park
+  const itemsByPark: Record<Park, GroupedItem[]> = {
+    disney: itemsByParkAndStore.disney.flatMap(g => g.items),
+    universal: itemsByParkAndStore.universal.flatMap(g => g.items),
+    seaworld: itemsByParkAndStore.seaworld.flatMap(g => g.items),
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 print:space-y-4">
+      {/* Print-only header */}
+      <div className="hidden print:block print-trip-header">
+        <h1 className="text-2xl font-bold">
+          Shopping Trip - {new Date(trip.date + 'T00:00:00').toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </h1>
+        <p>Parks: {trip.parks.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</p>
+        {trip.shopper && <p>Shopper: {trip.shopper.name}</p>}
+        <p>{trip.requests.reduce((sum, r) => sum + r.items.length, 0)} items total</p>
+      </div>
+
+      <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
           <Link href="/admin/trips">
             <Button variant="ghost" size="icon">
@@ -260,7 +305,14 @@ export default function TripDetailPage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 print:hidden">
+          <Button
+            variant="outline"
+            onClick={() => window.print()}
+          >
+            <Printer className="w-4 h-4 mr-2" />
+            Print List
+          </Button>
           {trip.status === 'planned' && (
             <Button
               variant="gold"
@@ -309,7 +361,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* Parks */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 print:hidden">
         {trip.parks.map((park) => (
           <Badge key={park} className={`${getParkColor(park)} text-base py-1 px-3`}>
             <MapPin className="w-4 h-4 mr-1" />
@@ -319,7 +371,7 @@ export default function TripDetailPage() {
       </div>
 
       {trip.notes && (
-        <Card>
+        <Card className="print:hidden">
           <CardHeader>
             <CardTitle className="text-sm font-medium">Notes</CardTitle>
           </CardHeader>
@@ -330,41 +382,73 @@ export default function TripDetailPage() {
       )}
 
       {/* Shopping List by Park */}
-      <div className="space-y-6">
+      <div className="space-y-6 print:space-y-4">
         {trip.parks.map((park) => {
           const parkItems = itemsByPark[park];
+          const storeGroups = itemsByParkAndStore[park];
           return (
-            <Card key={park}>
-              <CardHeader>
+            <Card key={park} className="print:border-0 print:shadow-none">
+              <CardHeader className="print:pb-2">
                 <CardTitle className="flex items-center gap-2">
                   <Badge className={getParkColor(park)}>{park}</Badge>
                   <span className="text-sm font-normal text-muted-foreground">
-                    {parkItems.length} item{parkItems.length !== 1 ? 's' : ''}
+                    {parkItems.length} item{parkItems.length !== 1 ? 's' : ''} in {storeGroups.length} location{storeGroups.length !== 1 ? 's' : ''}
                   </span>
                 </CardTitle>
+                {/* Print-only park header */}
+                <div className="hidden print:block print-park-header capitalize">
+                  {park} ({parkItems.length} items)
+                </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="print:p-0">
                 {parkItems.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">No items for this park</p>
+                  <p className="text-muted-foreground text-center py-4 print:hidden">No items for this park</p>
                 ) : (
-                  <div className="space-y-2">
-                    {parkItems.map(({ requestId, customerName, item }) => (
-                      <Link
-                        key={item.id}
-                        href={`/admin/requests/${requestId}`}
-                        className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          {getItemStatusIcon(item.status)}
-                          <div>
-                            <p className="font-medium">{item.name}</p>
-                            <p className="text-sm text-muted-foreground">for {customerName}</p>
-                          </div>
+                  <div className="space-y-6 print:space-y-4">
+                    {storeGroups.map((storeGroup) => (
+                      <div key={storeGroup.store} className="space-y-2">
+                        {/* Store/Location Header */}
+                        <div className="flex items-center gap-2 pb-2 border-b">
+                          <MapPin className="w-4 h-4 text-gold" />
+                          <span className="font-medium">{storeGroup.store}</span>
+                          {storeGroup.land && (
+                            <span className="text-sm text-muted-foreground">• {storeGroup.land}</span>
+                          )}
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {storeGroup.items.length} item{storeGroup.items.length !== 1 ? 's' : ''}
+                          </span>
                         </div>
-                        <Badge variant="outline" className="capitalize">
-                          {item.status.replace('_', ' ')}
-                        </Badge>
-                      </Link>
+
+                        {/* Items in this store */}
+                        <div className="space-y-2 print:space-y-0 pl-6">
+                          {storeGroup.items.map(({ requestId, customerName, item }) => (
+                            <div key={item.id} className="print-shopping-item">
+                              {/* Print checkbox */}
+                              <div className="hidden print:block print-checkbox" />
+
+                              <Link
+                                href={`/admin/requests/${requestId}`}
+                                className="flex-1 flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors print:p-0 print:border-0"
+                              >
+                                <div className="flex items-center gap-3 print:gap-2">
+                                  <span className="print:hidden">{getItemStatusIcon(item.status)}</span>
+                                  <div>
+                                    <p className="font-medium print:text-sm">{item.name}</p>
+                                    <p className="text-sm text-muted-foreground print:text-xs">for {customerName}</p>
+                                  </div>
+                                </div>
+                                <Badge variant="outline" className="capitalize print:hidden">
+                                  {item.status.replace('_', ' ')}
+                                </Badge>
+                                {/* Print-only price placeholder */}
+                                <span className="hidden print:inline-block text-sm">
+                                  $________
+                                </span>
+                              </Link>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -375,7 +459,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* Assigned Requests */}
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
           <CardTitle>Assigned Requests</CardTitle>
         </CardHeader>

@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Type checking enabled
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -43,6 +43,9 @@ import {
   ImageIcon,
   Camera,
   MapPin,
+  ShoppingCart,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { ImageGallery } from '@/components/ImageGallery';
 import { ImageUploader } from '@/components/ImageUploader';
@@ -83,6 +86,13 @@ interface StoreLocation {
   id: string;
   name: string;
   park: Park;
+}
+
+interface ShoppingTrip {
+  id: string;
+  date: string;
+  parks: Park[];
+  status: string;
 }
 
 interface Request {
@@ -133,11 +143,140 @@ export default function RequestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [showQuoteDialog, setShowQuoteDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [editingPrices, setEditingPrices] = useState<Record<string, { actual: string; pickup: string }>>({});
+  const [availableTrips, setAvailableTrips] = useState<ShoppingTrip[]>([]);
+  const [assigningTrip, setAssigningTrip] = useState(false);
 
   useEffect(() => {
     fetchRequest();
+    fetchAvailableTrips();
   }, [id]);
+
+  const fetchAvailableTrips = async () => {
+    try {
+      const { data } = await supabase
+        .from('shopping_trips')
+        .select('id, date, parks, status')
+        .in('status', ['planned', 'in_progress'])
+        .gte('date', new Date().toISOString().split('T')[0])
+        .order('date', { ascending: true });
+
+      setAvailableTrips(
+        data?.map((t) => ({
+          ...t,
+          parks: t.parks as Park[],
+        })) || []
+      );
+    } catch (error) {
+      console.error('Error fetching trips:', error);
+    }
+  };
+
+  const assignToTrip = async (tripId: string) => {
+    if (!request) return;
+    setAssigningTrip(true);
+
+    try {
+      const { error } = await supabase
+        .from('requests')
+        .update({
+          shopping_trip_id: tripId,
+          status: 'scheduled',
+        })
+        .eq('id', request.id);
+
+      if (error) throw error;
+
+      setRequest((prev) => prev ? { ...prev, shopping_trip_id: tripId, status: 'scheduled' } : null);
+      toast({
+        title: 'Request assigned',
+        description: 'Request has been assigned to the shopping trip',
+      });
+    } catch (error) {
+      console.error('Error assigning trip:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to assign trip',
+        variant: 'destructive',
+      });
+    } finally {
+      setAssigningTrip(false);
+    }
+  };
+
+  const unassignFromTrip = async () => {
+    if (!request) return;
+    setAssigningTrip(true);
+
+    try {
+      const { error } = await supabase
+        .from('requests')
+        .update({
+          shopping_trip_id: null,
+          status: 'approved',
+        })
+        .eq('id', request.id);
+
+      if (error) throw error;
+
+      setRequest((prev) => prev ? { ...prev, shopping_trip_id: null, status: 'approved' } : null);
+      toast({
+        title: 'Request unassigned',
+        description: 'Request has been removed from the shopping trip',
+      });
+    } catch (error) {
+      console.error('Error unassigning trip:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to unassign trip',
+        variant: 'destructive',
+      });
+    } finally {
+      setAssigningTrip(false);
+    }
+  };
+
+  const deleteRequest = async () => {
+    if (!request) return;
+    setDeleting(true);
+
+    try {
+      // First delete all request items
+      const { error: itemsError } = await supabase
+        .from('request_items')
+        .delete()
+        .eq('request_id', request.id);
+
+      if (itemsError) throw itemsError;
+
+      // Then delete the request itself
+      const { error: requestError } = await supabase
+        .from('requests')
+        .delete()
+        .eq('id', request.id);
+
+      if (requestError) throw requestError;
+
+      toast({
+        title: 'Request deleted',
+        description: 'The request has been permanently deleted',
+      });
+
+      router.push('/admin/requests');
+    } catch (error) {
+      console.error('Error deleting request:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete request',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
 
   const fetchRequest = async () => {
     try {
@@ -536,8 +675,45 @@ export default function RequestDetailPage() {
               </Button>
             </Link>
           )}
+          <Button
+            variant="outline"
+            size="icon"
+            className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            onClick={() => setShowDeleteDialog(true)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Request</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this request? This will permanently remove the request and all its items. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteRequest}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Request'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Status Progress */}
       <Card>
@@ -586,7 +762,7 @@ export default function RequestDetailPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {/* Customer Info */}
         <Card>
           <CardHeader>
@@ -638,6 +814,81 @@ export default function RequestDetailPage() {
             <p className="text-sm text-muted-foreground">
               {request.items.filter((i) => i.status === 'found').length} found
             </p>
+          </CardContent>
+        </Card>
+
+        {/* Shopping Trip Assignment */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4" />
+              Shopping Trip
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {request.shopping_trip_id ? (
+              <div className="space-y-2">
+                <Link
+                  href={`/admin/trips/${request.shopping_trip_id}`}
+                  className="text-gold hover:underline font-medium"
+                >
+                  View Assigned Trip
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground"
+                  onClick={unassignFromTrip}
+                  disabled={assigningTrip}
+                >
+                  {assigningTrip ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <XCircle className="w-3 h-3 mr-1" />
+                  )}
+                  Unassign
+                </Button>
+              </div>
+            ) : request.status === 'approved' ? (
+              <div className="space-y-2">
+                {availableTrips.length > 0 ? (
+                  <Select
+                    onValueChange={assignToTrip}
+                    disabled={assigningTrip}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a trip..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableTrips.map((trip) => (
+                        <SelectItem key={trip.id} value={trip.id}>
+                          {new Date(trip.date + 'T00:00:00').toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })} - {trip.parks.join(', ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No upcoming trips</p>
+                )}
+                <Link href="/admin/trips/new">
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Plus className="w-3 h-3 mr-1" />
+                    Plan New Trip
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {request.status === 'pending' || request.status === 'quoted'
+                  ? 'Approve request first'
+                  : request.status === 'scheduled' || request.status === 'shopping'
+                  ? 'Trip in progress'
+                  : 'Not applicable'}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

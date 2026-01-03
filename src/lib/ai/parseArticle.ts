@@ -13,14 +13,23 @@ function getAnthropic() {
   return anthropic;
 }
 
+export interface ProductLocation {
+  park: ParkLocation;
+  land?: string;       // e.g., "Fantasyland", "Adventureland", "Diagon Alley"
+  store?: string;      // e.g., "Emporium", "Creations Shop", "World of Disney"
+  is_confirmed: boolean; // true if explicitly mentioned in article, false if inferred
+}
+
 export interface ParsedProduct {
   name: string;
   canonical_name: string;  // Normalized slug for deduplication
   description: string;
   category: ItemCategory;
   park: ParkLocation;
+  locations: ProductLocation[];  // Specific stores/lands where item is available
   estimated_price: number | null;
   is_limited_edition: boolean;
+  is_online_only: boolean;  // true if ONLY available online (shopDisney), not in parks
   tags: string[];
   demand_score: number;
   image_url: string | null;
@@ -40,7 +49,7 @@ export async function parseArticleForProducts(
   sourceName: string
 ): Promise<ParseResult> {
   const response = await getAnthropic().messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-haiku-3-5-20241022',
     max_tokens: 4096,
     messages: [{
       role: 'user',
@@ -51,10 +60,21 @@ For each product, provide:
 - canonical_name: Simplified slug for matching (e.g., "mickey-holiday-spirit-jersey"). Lowercase, hyphens, no special chars, remove words like "disney", "world", "parks", "anniversary", "edition", "limited", "exclusive"
 - description: 2-3 sentence compelling description for shoppers
 - category: One of: loungefly, ears, spirit_jersey, popcorn_bucket, pins, plush, apparel, drinkware, collectible, home_decor, toys, jewelry, other
-- park: One of: disney_mk, disney_epcot, disney_hs, disney_ak, disney_springs, universal_usf, universal_ioa, universal_citywalk, seaworld, multiple, disneyland_ca, dca_ca, universal_hollywood
-  NOTE: Use "disneyland_ca" for Disneyland (California), "dca_ca" for Disney California Adventure, "universal_hollywood" for Universal Studios Hollywood. Use the disney_* codes for Walt Disney World (Florida) parks only.
+- park: One of: disney_mk, disney_epcot, disney_hs, disney_ak, disney_springs, universal_usf, universal_ioa, universal_citywalk, universal_epic, seaworld, multiple
+  NOTE: This is an ORLANDO-ONLY service. Only include Walt Disney World (Florida), Universal Orlando, and SeaWorld Orlando merchandise.
+  SKIP any products from: Disneyland (California), Disney California Adventure, Universal Studios Hollywood, or any non-Orlando location.
+  Park codes: disney_mk=Magic Kingdom, disney_epcot=EPCOT, disney_hs=Hollywood Studios, disney_ak=Animal Kingdom, disney_springs=Disney Springs
+  Universal codes: universal_usf=Universal Studios Florida, universal_ioa=Islands of Adventure, universal_citywalk=CityWalk, universal_epic=Epic Universe
+- locations: Array of specific locations where item is available. Each location has:
+  - park: Same values as above
+  - land: The themed land/area (e.g., "Fantasyland", "Adventureland", "Tomorrowland", "World Showcase", "Diagon Alley", "The Wizarding World", "Hogsmeade")
+  - store: The specific store name (e.g., "Emporium", "Creations Shop", "World of Disney", "Star Trader", "Dino-Rama", "Wiseacre's Wizarding Equipment")
+  - is_confirmed: true if the article explicitly mentions this location, false if inferred from park/context
+  Common Disney stores: "Emporium" (MK), "Creations Shop" (EPCOT), "Celebrity 5 & 10" (HS), "Island Mercantile" (AK), "World of Disney" (Springs)
+  Common Universal stores: "Weasleys' Wizard Wheezes" (Diagon Alley), "Honeydukes" (Hogsmeade), "Universal Studios Store"
 - estimated_price: Best guess in USD (null if unknown)
 - is_limited_edition: true/false
+- is_online_only: true if this item is ONLY available online (shopDisney.com) and NOT available in the theme parks. false if it's available in parks (even if also online)
 - tags: Array of relevant tags like character names, collections, themes (e.g., ["mickey", "halloween", "50th anniversary"])
 - demand_score: 1-10 rating of likely customer demand (10 = extremely hot item like limited popcorn buckets, 1 = generic souvenir)
 - image_url: Extract image URL if found in article
@@ -98,13 +118,15 @@ Return ONLY valid JSON in this exact format:
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Ensure canonical_name is set for all products (fallback to our generator if AI missed it)
+    // Ensure all fields are set for all products (fallback to defaults if AI missed them)
     if (parsed.products) {
       parsed.products = parsed.products.map((p: ParsedProduct) => ({
         ...p,
         canonical_name: p.canonical_name || generateCanonicalName(p.name),
         release_status: p.release_status || 'announced',
         projected_date: p.projected_date || null,
+        is_online_only: p.is_online_only || false,
+        locations: p.locations || [],  // Default to empty array if not provided
       }));
     }
 
@@ -122,7 +144,7 @@ export async function generateProductDescription(
   existingDescription?: string
 ): Promise<string> {
   const response = await getAnthropic().messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-haiku-3-5-20241022',
     max_tokens: 500,
     messages: [{
       role: 'user',
@@ -150,7 +172,7 @@ export async function findSimilarProducts(
   if (existingProducts.length === 0) return [];
 
   const response = await getAnthropic().messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-haiku-3-5-20241022',
     max_tokens: 500,
     messages: [{
       role: 'user',

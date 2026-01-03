@@ -1,13 +1,9 @@
-// @ts-nocheck
-import { createClient } from '@supabase/supabase-js';
-import type { Database, ReleaseStatus, RELEASE_STATUS_ORDER } from '@/lib/database.types';
+// Type checking enabled
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { createLogger } from '@/lib/logger';
+import type { ReleaseStatus } from '@/lib/database.types';
 
-function getSupabaseAdmin() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+const log = createLogger('Deduplication');
 
 // Status progression order
 const STATUS_ORDER: ReleaseStatus[] = ['rumored', 'announced', 'coming_soon', 'available', 'sold_out'];
@@ -79,7 +75,7 @@ export async function findExistingRelease(
     });
 
   if (error) {
-    console.error('Error finding similar release:', error);
+    log.error('Error finding similar release', error);
     // Fallback to a simpler query if the RPC fails
     const { data: fallback } = await supabase
       .from('new_releases')
@@ -131,7 +127,7 @@ export async function addSourceToRelease(
     });
 
   if (error) {
-    console.error('Error adding source to release:', error);
+    log.error('Error adding source to release', error);
     return false;
   }
 
@@ -162,7 +158,7 @@ export async function updateReleaseStatus(
     .single();
 
   if (!current) {
-    console.error('Release not found:', releaseId);
+    log.error('Release not found', null, { releaseId });
     return false;
   }
 
@@ -171,7 +167,7 @@ export async function updateReleaseStatus(
 
   // Only allow forward progression (or same status for date updates)
   if (newIndex < currentIndex) {
-    console.log(`Status cannot go backward: ${current.status} → ${newStatus}`);
+    log.debug(`Status cannot go backward`, { current: current.status, new: newStatus });
     return false;
   }
 
@@ -204,7 +200,7 @@ export async function updateReleaseStatus(
     .eq('id', releaseId);
 
   if (error) {
-    console.error('Error updating release status:', error);
+    log.error('Error updating release status', error);
     return false;
   }
 
@@ -227,7 +223,7 @@ export async function mergeReleases(
   });
 
   if (error) {
-    console.error('Error merging releases:', error);
+    log.error('Error merging releases', error);
     return false;
   }
 

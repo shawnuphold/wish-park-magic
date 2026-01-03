@@ -19,6 +19,7 @@ import {
   Plus,
   Bell,
   BellOff,
+  Camera,
 } from 'lucide-react';
 import type { Database, NotificationPreferences } from '@/lib/database.types';
 
@@ -37,6 +38,7 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     const fetchCustomer = async () => {
       try {
+        // @ts-expect-error - customers table not in generated types
         const { data, error } = await supabase
           .from('customers')
           .select(`
@@ -275,12 +277,20 @@ export default function CustomerDetailPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Requests</CardTitle>
-          <Link href={`/admin/requests/new?customer=${customer.id}`}>
-            <Button size="sm" variant="gold">
-              <Plus className="w-4 h-4 mr-2" />
-              New Request
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href={`/admin/requests/from-screenshot?customer=${customer.id}&name=${encodeURIComponent(customer.name)}`}>
+              <Button size="sm" variant="outline">
+                <Camera className="w-4 h-4 mr-2" />
+                From Screenshot
+              </Button>
+            </Link>
+            <Link href={`/admin/requests/new?customer=${customer.id}`}>
+              <Button size="sm" variant="gold">
+                <Plus className="w-4 h-4 mr-2" />
+                New Request
+              </Button>
+            </Link>
+          </div>
         </CardHeader>
         <CardContent>
           {customer.requests.length === 0 ? (
