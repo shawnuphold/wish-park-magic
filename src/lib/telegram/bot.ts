@@ -156,17 +156,26 @@ async function createRequestFromState(
   try {
     // Upload screenshot to S3 reference-images folder
     let screenshotUrl: string | null = null;
+    log.info('createRequestFromState called', {
+      hasImageBase64: !!imageBase64,
+      imageBase64Length: imageBase64?.length || 0
+    });
+
     if (imageBase64) {
       try {
         const buffer = Buffer.from(imageBase64, 'base64');
+        log.info('Uploading screenshot to S3', { bufferSize: buffer.length });
         screenshotUrl = await uploadBufferToFolder(
           buffer,
           'reference-images',
           'image/jpeg'
         );
+        log.info('Screenshot uploaded to S3', { screenshotUrl });
       } catch (error) {
         log.error('Failed to upload screenshot to S3', error);
       }
+    } else {
+      log.warn('No imageBase64 in conversation state');
     }
 
     // Create request
@@ -186,7 +195,13 @@ async function createRequestFromState(
       throw new Error(`Failed to create request: ${requestError?.message}`);
     }
 
-    // Create request item
+    // Create request item with reference_images array (not reference_image_url)
+    log.info('Creating request item', {
+      requestId: request.id,
+      screenshotUrl,
+      hasScreenshotUrl: !!screenshotUrl
+    });
+
     const { error: itemError } = await supabase
       .from('request_items')
       .insert({
@@ -196,11 +211,13 @@ async function createRequestFromState(
         park: analysis.park || 'disney',
         quantity: 1,
         notes: analysis.size ? `Size: ${analysis.size}` : null,
-        reference_image_url: screenshotUrl
+        reference_images: screenshotUrl ? [screenshotUrl] : []
       });
 
     if (itemError) {
       log.error('Failed to create request item', itemError);
+    } else {
+      log.info('Request item created successfully with image', { screenshotUrl });
     }
 
     // Link customer to FB name if not already linked
