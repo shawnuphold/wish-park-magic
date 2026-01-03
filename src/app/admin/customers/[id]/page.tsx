@@ -22,6 +22,7 @@ import {
   Camera,
 } from 'lucide-react';
 import type { Database, NotificationPreferences } from '@/lib/database.types';
+import { AliasManager } from '@/components/admin/AliasManager';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 type Request = Database['public']['Tables']['requests']['Row'];
@@ -205,6 +206,9 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Linked Accounts */}
+      <AliasManager customerId={customer.id} />
 
       {/* Notification Preferences */}
       <Card>

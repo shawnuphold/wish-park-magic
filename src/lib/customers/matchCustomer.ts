@@ -168,7 +168,7 @@ export async function matchCustomerByFBName(fbName: string): Promise<MatchResult
  */
 export async function addCustomerAlias(
   customerId: string,
-  aliasType: 'facebook' | 'instagram' | 'email' | 'phone' | 'other',
+  aliasType: 'facebook' | 'instagram' | 'telegram' | 'email' | 'phone' | 'other',
   aliasValue: string,
   isPrimary: boolean = false
 ): Promise<boolean> {

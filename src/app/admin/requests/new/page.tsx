@@ -28,6 +28,7 @@ import {
 import { ImageUploader } from '@/components/ImageUploader';
 import { StoreLocationPicker, type StoreLocation } from '@/components/StoreLocationPicker';
 import { ScreenshotRequestParser } from '@/components/ScreenshotRequestParser';
+import { QuickAddCustomerModal } from '@/components/admin/QuickAddCustomerModal';
 import type { ParsedRequestItem } from '@/lib/ai/parseScreenshot';
 
 interface Customer {
@@ -96,6 +97,7 @@ function NewRequestForm() {
   const [loading, setLoading] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [showScreenshotParser, setShowScreenshotParser] = useState(false);
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
 
   // Handle items confirmed from screenshot parser
   const handleScreenshotItemsConfirmed = (parsedItems: ParsedRequestItem[]) => {
@@ -169,6 +171,13 @@ function NewRequestForm() {
 
     fetchCustomers();
   }, []);
+
+  // Handle new customer created from modal
+  const handleCustomerCreated = (newCustomer: { id: string; name: string; email: string | null }) => {
+    // Add to customers list and select it
+    setCustomers((prev) => [...prev, { ...newCustomer, email: newCustomer.email || '' }].sort((a, b) => a.name.localeCompare(b.name)));
+    setSelectedCustomerId(newCustomer.id);
+  };
 
   const handleItemChange = (index: number, field: keyof RequestItem, value: any) => {
     setItems((prev) => {
@@ -293,28 +302,35 @@ function NewRequestForm() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="customer">Select Customer *</Label>
-              <Select
-                value={selectedCustomerId}
-                onValueChange={setSelectedCustomerId}
-                disabled={loadingCustomers}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a customer..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id}>
-                      {customer.name} ({customer.email})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={selectedCustomerId}
+                  onValueChange={setSelectedCustomerId}
+                  disabled={loadingCustomers}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a customer..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        {customer.name} ({customer.email})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowAddCustomerModal(true)}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  New
+                </Button>
+              </div>
               {customers.length === 0 && !loadingCustomers && (
                 <p className="text-sm text-muted-foreground">
-                  No customers found.{' '}
-                  <Link href="/admin/customers/new" className="text-gold hover:underline">
-                    Add one first
-                  </Link>
+                  No customers found. Click &quot;New&quot; to add one.
                 </p>
               )}
             </div>
@@ -527,6 +543,13 @@ function NewRequestForm() {
           </Button>
         </div>
       </form>
+
+      {/* Quick Add Customer Modal */}
+      <QuickAddCustomerModal
+        open={showAddCustomerModal}
+        onOpenChange={setShowAddCustomerModal}
+        onCustomerCreated={handleCustomerCreated}
+      />
     </div>
   );
 }

@@ -159,6 +159,11 @@ export interface Database {
           found_image_url: string | null
           notes: string | null
           matched_release_id: string | null
+          // Shopping trip fields
+          shopping_trip_id: string | null
+          trip_status: 'pending' | 'assigned' | 'shopping' | 'found' | 'not_found' | 'out_of_stock' | null
+          trip_notes: string | null
+          priority: number
           created_at: string
           updated_at: string
         }
@@ -168,11 +173,16 @@ export interface Database {
       shopping_trips: {
         Row: {
           id: string
+          name: string | null
           date: string
-          parks: Park[]
+          trip_date: string | null
+          park: string | null  // Granular park code (disney_mk, disney_epcot, etc.)
+          parks: Park[]  // Legacy - array of general parks
           shopper_id: string | null
-          status: 'planned' | 'in_progress' | 'completed' | 'cancelled'
+          status: 'planning' | 'active' | 'completed' | 'cancelled'
           notes: string | null
+          started_at: string | null
+          completed_at: string | null
           created_at: string
           updated_at: string
         }
@@ -276,10 +286,12 @@ export interface Database {
           images: ReleaseImage[]
           // Original full-size image before AI cropping (for manual re-crop)
           original_image_url: string | null
+          // Data retention
+          expires_at: string | null
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['new_releases']['Row'], 'id' | 'created_at' | 'updated_at' | 'park_exclusive'>
+        Insert: Omit<Database['public']['Tables']['new_releases']['Row'], 'id' | 'created_at' | 'updated_at' | 'park_exclusive' | 'expires_at'>
         Update: Partial<Database['public']['Tables']['new_releases']['Insert']>
       }
       // Article sources that mention a product (many-to-one)
