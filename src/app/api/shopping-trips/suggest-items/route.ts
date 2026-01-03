@@ -9,10 +9,11 @@ export async function GET(request: NextRequest) {
     const excludeTripId = searchParams.get('exclude_trip_id');
 
     // Find items that:
-    // 1. Are from approved/scheduled requests
+    // 1. Are from any active request (pending through shopping)
     // 2. Match the park (if specified)
-    // 3. Are not already assigned to a trip (or assigned to a different trip)
-    // 4. Have status pending (not yet found)
+    // 3. Are not already assigned to a trip
+    // 4. Have item status pending (not yet found)
+    // Note: No quote/approval required - items can be added to trips immediately
     let query = supabase
       .from('request_items')
       .select(`
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
           customer:customers(id, name)
         )
       `)
-      .in('request.status', ['approved', 'scheduled', 'shopping'])
+      .in('request.status', ['pending', 'quoted', 'approved', 'scheduled', 'shopping'])
       .eq('status', 'pending')
       .is('shopping_trip_id', null)
       .order('priority', { ascending: true })

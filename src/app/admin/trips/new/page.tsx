@@ -26,7 +26,7 @@ interface AdminUser {
   name: string;
 }
 
-interface ApprovedRequest {
+interface PendingRequest {
   id: string;
   customer_name: string;
   item_count: number;
@@ -49,7 +49,7 @@ export default function NewTripPage() {
   const [notes, setNotes] = useState('');
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
   const [shoppers, setShoppers] = useState<AdminUser[]>([]);
-  const [approvedRequests, setApprovedRequests] = useState<ApprovedRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -64,7 +64,7 @@ export default function NewTripPage() {
 
         setShoppers(shopperData || []);
 
-        // Fetch approved requests without a shopping trip
+        // Fetch pending requests (no quote/approval required for shopping trips)
         const { data: requestData } = await supabase
           .from('requests')
           .select(`
@@ -72,10 +72,10 @@ export default function NewTripPage() {
             customer:customers(name),
             items:request_items(id, park)
           `)
-          .eq('status', 'approved')
+          .in('status', ['pending', 'quoted', 'approved', 'scheduled', 'shopping'])
           .is('shopping_trip_id', null);
 
-        setApprovedRequests(
+        setPendingRequests(
           requestData?.map((r) => {
             const items = r.items as { id: string; park: Park }[];
             const parks = Array.from(new Set(items.map((i) => i.park))) as Park[];
@@ -112,7 +112,7 @@ export default function NewTripPage() {
   };
 
   // Filter requests based on selected parks
-  const filteredRequests = approvedRequests.filter((req) =>
+  const filteredRequests = pendingRequests.filter((req) =>
     selectedParks.length === 0 || req.parks.some((p) => selectedParks.includes(p))
   );
 
@@ -288,7 +288,7 @@ export default function NewTripPage() {
                 <div className="text-center py-8 text-muted-foreground">
                   {selectedParks.length === 0
                     ? 'Select parks to see available requests'
-                    : 'No approved requests for selected parks'}
+                    : 'No pending requests for selected parks'}
                 </div>
               ) : (
                 <div className="space-y-3">
