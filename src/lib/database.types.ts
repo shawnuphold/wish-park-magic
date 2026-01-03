@@ -158,6 +158,7 @@ export interface Database {
           status: 'pending' | 'found' | 'not_found' | 'substituted'
           found_image_url: string | null
           notes: string | null
+          matched_release_id: string | null
           created_at: string
           updated_at: string
         }

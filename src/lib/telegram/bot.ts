@@ -20,11 +20,22 @@ import {
   createCustomerFromFacebook,
   linkCustomerToFacebook
 } from '../customers/matchCustomer';
+import { findMatchingRelease } from '../releases/matchRelease';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { uploadBufferToFolder } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('TelegramBot');
+
+// Matched release info
+interface MatchedRelease {
+  id: string;
+  title: string;
+  price_estimate: number | null;
+  ai_demand_score: number | null;
+  is_limited_edition: boolean;
+  confidence: number;
+}
 
 // Conversation state for multi-step flows
 interface ConversationState {
@@ -47,6 +58,7 @@ interface ConversationState {
       matchType: string;
     }>;
     customerName?: string;
+    matchedRelease?: MatchedRelease;
   };
 }
 
@@ -187,7 +199,7 @@ async function createRequestFromState(
   data: ConversationState['data']
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const { analysis, customer, imageBase64 } = data;
+  const { analysis, customer, imageBase64, matchedRelease } = data;
 
   if (!analysis || !customer) {
     await ctx.reply('Missing data to create request.');
@@ -257,7 +269,9 @@ async function createRequestFromState(
         notes: analysis.size ? `Size: ${analysis.size}` : null,
         reference_images: screenshotUrl ? [screenshotUrl] : [],
         store_name: suggestedStore?.store_name || null,
-        land_name: suggestedStore?.land || null
+        land_name: suggestedStore?.land || null,
+        matched_release_id: matchedRelease?.id || null,
+        estimated_price: matchedRelease?.price_estimate || null
       });
 
     if (itemError) {
@@ -277,13 +291,29 @@ async function createRequestFromState(
       ? `📍 Store: ${suggestedStore.store_name}${suggestedStore.land ? ` (${suggestedStore.land})` : ''}\n`
       : '';
 
+    // Build release match info for display
+    let releaseInfo = '';
+    if (matchedRelease) {
+      releaseInfo = `\n🔗 Matched: ${matchedRelease.title}\n`;
+      if (matchedRelease.price_estimate) {
+        releaseInfo += `💰 Est: $${matchedRelease.price_estimate}\n`;
+      }
+      if (matchedRelease.ai_demand_score) {
+        releaseInfo += `🔥 Demand: ${matchedRelease.ai_demand_score}/10\n`;
+      }
+      if (matchedRelease.is_limited_edition) {
+        releaseInfo += `⚠️ Limited Edition\n`;
+      }
+    }
+
     await ctx.reply(
-      `Request created!\n\n` +
+      `✅ Request created!\n\n` +
       `Customer: ${customer.name}\n` +
       `Item: ${analysis.productName}\n` +
       `${analysis.size ? `Size: ${analysis.size}\n` : ''}` +
       `${analysis.park ? `Park: ${analysis.park}\n` : ''}` +
       `${storeInfo}` +
+      `${releaseInfo}` +
       `\nView in CRM: ${baseUrl}/admin/requests/${request.id}`,
       { parse_mode: 'HTML' }
     );
@@ -348,6 +378,30 @@ export function createTelegramBot(): Telegraf {
         return;
       }
 
+      // Try to match to existing release
+      let matchedRelease: MatchedRelease | undefined;
+      try {
+        const releaseMatch = await findMatchingRelease(analysis.productName, analysis.category);
+        if (releaseMatch.found && releaseMatch.release) {
+          matchedRelease = {
+            id: releaseMatch.release.id,
+            title: releaseMatch.release.title,
+            price_estimate: releaseMatch.release.price_estimate,
+            ai_demand_score: releaseMatch.release.ai_demand_score,
+            is_limited_edition: releaseMatch.release.is_limited_edition,
+            confidence: releaseMatch.confidence
+          };
+          log.info('Matched to release', {
+            productName: analysis.productName,
+            releaseTitle: matchedRelease.title,
+            confidence: matchedRelease.confidence
+          });
+        }
+      } catch (error) {
+        log.error('Error matching release', error);
+        // Continue without release match
+      }
+
       // Try to match customer
       const match = await matchCustomerByFBName(analysis.customerName);
 
@@ -358,13 +412,29 @@ export function createTelegramBot(): Telegraf {
           data: {
             analysis,
             customer: match.customer,
-            imageBase64: base64
+            imageBase64: base64,
+            matchedRelease
           }
         });
 
         const storeHint = analysis.suggestedStores?.[0]
           ? `📍 Likely at: ${analysis.suggestedStores[0].store_name}${analysis.suggestedStores[0].land ? ` (${analysis.suggestedStores[0].land})` : ''}\n`
           : '';
+
+        // Build release match preview
+        let releaseHint = '';
+        if (matchedRelease) {
+          releaseHint = `\n🔗 Matched: ${matchedRelease.title}\n`;
+          if (matchedRelease.price_estimate) {
+            releaseHint += `💰 Est: $${matchedRelease.price_estimate}\n`;
+          }
+          if (matchedRelease.ai_demand_score) {
+            releaseHint += `🔥 Demand: ${matchedRelease.ai_demand_score}/10\n`;
+          }
+          if (matchedRelease.is_limited_edition) {
+            releaseHint += `⚠️ Limited Edition\n`;
+          }
+        }
 
         await ctx.reply(
           `Found customer: ${match.customer.name}\n` +
@@ -373,6 +443,7 @@ export function createTelegramBot(): Telegraf {
           `${analysis.size ? `Size: ${analysis.size}\n` : ''}` +
           `${analysis.park ? `Park: ${analysis.park}\n` : ''}` +
           `${storeHint}` +
+          `${releaseHint}` +
           `${analysis.notes ? `Notes: ${analysis.notes}\n` : ''}\n` +
           `Create this request?`,
           {
@@ -392,7 +463,8 @@ export function createTelegramBot(): Telegraf {
           data: {
             analysis,
             imageBase64: base64,
-            suggestions: match.suggestions
+            suggestions: match.suggestions,
+            matchedRelease
           }
         });
 
