@@ -27,6 +27,28 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('TelegramBot');
 
+// Item extracted from screenshot
+interface ScreenshotItem {
+  productName: string;
+  size?: string;
+  category?: string;
+  park?: 'disney' | 'universal' | 'seaworld';
+  suggestedStore?: {
+    store_name: string;
+    land?: string;
+  };
+  imageIndex?: number;
+}
+
+// Analysis result with multiple items
+interface ScreenshotAnalysis {
+  isValidRequest: boolean;
+  customerName: string;
+  items: ScreenshotItem[];
+  notes?: string;
+  urgency?: 'normal' | 'urgent' | 'asap';
+}
+
 // Matched release info
 interface MatchedRelease {
   id: string;
@@ -36,6 +58,18 @@ interface MatchedRelease {
   is_limited_edition: boolean;
   confidence: number;
 }
+
+// Media group buffer for collecting multiple photos
+interface MediaGroupBuffer {
+  photos: Array<{ fileId: string }>;
+  chatId: number;
+  fromId: number;
+  caption?: string;
+  timestamp: number;
+  timeoutId?: ReturnType<typeof setTimeout>;
+}
+
+const mediaGroupBuffers = new Map<string, MediaGroupBuffer>();
 
 // Conversation state for multi-step flows
 interface ConversationState {
@@ -48,8 +82,7 @@ interface ConversationState {
       email: string | null;
       facebook_name: string | null;
     };
-    imageBase64?: string;
-    imageUrl?: string;
+    images?: Array<{ base64: string }>;
     suggestions?: Array<{
       id: string;
       name: string;
@@ -58,28 +91,11 @@ interface ConversationState {
       matchType: string;
     }>;
     customerName?: string;
-    matchedRelease?: MatchedRelease;
+    matchedReleases?: Map<number, MatchedRelease>;
   };
 }
 
 const conversationState = new Map<number, ConversationState>();
-
-interface ScreenshotAnalysis {
-  isValidRequest: boolean;
-  customerName: string;
-  productName: string;
-  size?: string;
-  notes?: string;
-  park?: 'disney' | 'universal' | 'seaworld';
-  category?: string;
-  urgency?: 'normal' | 'urgent' | 'asap';
-  suggestedStores?: Array<{
-    store_name: string;
-    park: string;
-    land?: string;
-    confidence: 'high' | 'medium' | 'low';
-  }>;
-}
 
 /**
  * Fetch store locations from database for AI context
@@ -102,78 +118,79 @@ async function getStoreLocations(): Promise<string> {
 }
 
 /**
- * Analyze a screenshot using Claude Vision
+ * Analyze multiple screenshots using Claude Vision
  */
-async function analyzeScreenshot(base64: string): Promise<ScreenshotAnalysis> {
+async function analyzeScreenshots(
+  images: Array<{ base64: string }>,
+  caption?: string
+): Promise<ScreenshotAnalysis> {
   const anthropic = new Anthropic();
-
-  // Fetch store locations for AI context
   const storeList = await getStoreLocations();
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: 'image/jpeg',
-              data: base64
-            }
-          },
-          {
-            type: 'text',
-            text: `Analyze this screenshot of a Facebook message/comment/post. Extract the following information:
+    // Build content array with all images
+    const content: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [];
 
-1. Customer name - The person requesting the item. Look for their Facebook profile name (usually shown next to their message or comment).
+    for (let i = 0; i < images.length; i++) {
+      content.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/jpeg',
+          data: images[i].base64
+        }
+      });
+    }
 
-2. Product name - What specific item they want to buy. Be specific (e.g., "Mickey Mouse Spirit Jersey" not just "spirit jersey").
+    content.push({
+      type: 'text',
+      text: `Analyze ${images.length === 1 ? 'this screenshot' : `these ${images.length} screenshots`} of Facebook messages/posts.
+${caption ? `\nCustomer message: "${caption}"` : ''}
 
-3. Size/variant - If they mention a size (S, M, L, XL, etc.) or color variant.
+Extract ALL items being requested. ${images.length > 1 ? 'Each image may show a different item.' : 'The customer may be requesting multiple items.'}
 
-4. Notes - Any special requests, urgency mentions, or additional context.
+For each item, extract:
+- productName: Specific product name (e.g., "Mickey Mouse Spirit Jersey" not just "spirit jersey")
+- size: Size if mentioned (S, M, L, XL, etc.) or null
+- category: One of: loungefly, ears, spirit_jersey, popcorn_bucket, pins, plush, apparel, drinkware, collectible, home_decor, toys, jewelry, other
+- park: disney, universal, or seaworld if identifiable
+- suggestedStore: Best store to find this item (from list below)
+- imageIndex: Which image this item is from (0-based index)
 
-5. Park - Which theme park if mentioned:
-   - disney (Walt Disney World, Magic Kingdom, EPCOT, Hollywood Studios, Animal Kingdom, Disney Springs)
-   - universal (Universal Studios, Islands of Adventure, CityWalk, Epic Universe)
-   - seaworld (SeaWorld Orlando)
-
-6. Category - Best fit from: loungefly, ears, spirit_jersey, popcorn_bucket, pins, plush, apparel, drinkware, collectible, home_decor, toys, jewelry, other
-
-7. Urgency - normal, urgent, or asap based on their message tone
-
-8. Suggested Stores - Based on the product type/theme, suggest 1-3 likely store locations where this item might be found. Choose from this list:
+Available stores:
 ${storeList}
 
 Match stores based on:
-- Character/franchise themes (e.g., Haunted Mansion items → Memento Mori, Star Wars → Galaxy's Edge shops)
-- Product categories (e.g., Loungefly bags → boutique stores, ears → Castle Couture)
-- Park-specific exclusives (e.g., EPCOT merchandise → Creations Shop)
-- General merchandise → main stores like Emporium, World of Disney
+- Character/franchise themes (Haunted Mansion → Memento Mori, Star Wars → Galaxy's Edge shops)
+- Product categories (Loungefly → boutiques, ears → Castle Couture)
+- Park-specific items (EPCOT merch → Creations Shop)
+- General merchandise → Emporium, World of Disney
 
-If this is NOT a product request (just casual chat, meme, unrelated content), set isValidRequest to false.
+If this is NOT a product request (casual chat, meme, unrelated), set isValidRequest to false.
 
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON:
 {
   "isValidRequest": true,
   "customerName": "Customer's Facebook Name",
-  "productName": "Specific Product Name",
-  "size": "M" or null,
+  "items": [
+    {
+      "productName": "Product Name",
+      "size": "M" or null,
+      "category": "apparel",
+      "park": "disney",
+      "suggestedStore": { "store_name": "Store Name", "land": "Land Name" },
+      "imageIndex": 0
+    }
+  ],
   "notes": "Any special notes" or null,
-  "park": "disney" or null,
-  "category": "apparel" or null,
-  "urgency": "normal",
-  "suggestedStores": [
-    {"store_name": "Store Name", "park": "Park Name", "land": "Land Name or null", "confidence": "high"}
-  ]
+  "urgency": "normal"
 }`
-          }
-        ]
-      }]
+    });
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content }]
     });
 
     const text = response.content[0].type === 'text' ? response.content[0].text : '';
@@ -181,13 +198,28 @@ Return ONLY valid JSON in this exact format:
     // Extract JSON from response (handle markdown code blocks)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Ensure items is an array
+      if (!parsed.items) {
+        // Convert old format to new format
+        parsed.items = [{
+          productName: parsed.productName || 'Unknown Item',
+          size: parsed.size,
+          category: parsed.category,
+          park: parsed.park,
+          suggestedStore: parsed.suggestedStores?.[0],
+          imageIndex: 0
+        }];
+      }
+
+      return parsed as ScreenshotAnalysis;
     }
 
-    return { isValidRequest: false, customerName: '', productName: '' };
+    return { isValidRequest: false, customerName: '', items: [] };
   } catch (error) {
-    log.error('Error analyzing screenshot', error);
-    return { isValidRequest: false, customerName: '', productName: '' };
+    log.error('Error analyzing screenshots', error);
+    return { isValidRequest: false, customerName: '', items: [] };
   }
 }
 
@@ -199,7 +231,7 @@ async function createRequestFromState(
   data: ConversationState['data']
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const { analysis, customer, imageBase64, matchedRelease } = data;
+  const { analysis, customer, images, matchedReleases } = data;
 
   if (!analysis || !customer) {
     await ctx.reply('Missing data to create request.');
@@ -207,28 +239,24 @@ async function createRequestFromState(
   }
 
   try {
-    // Upload screenshot to S3 reference-images folder
-    let screenshotUrl: string | null = null;
+    // Upload all images to S3
+    const imageUrls: string[] = [];
     log.info('createRequestFromState called', {
-      hasImageBase64: !!imageBase64,
-      imageBase64Length: imageBase64?.length || 0
+      imageCount: images?.length || 0,
+      itemCount: analysis.items.length
     });
 
-    if (imageBase64) {
-      try {
-        const buffer = Buffer.from(imageBase64, 'base64');
-        log.info('Uploading screenshot to S3', { bufferSize: buffer.length });
-        screenshotUrl = await uploadBufferToFolder(
-          buffer,
-          'reference-images',
-          'image/jpeg'
-        );
-        log.info('Screenshot uploaded to S3', { screenshotUrl });
-      } catch (error) {
-        log.error('Failed to upload screenshot to S3', error);
+    if (images && images.length > 0) {
+      for (const img of images) {
+        try {
+          const buffer = Buffer.from(img.base64, 'base64');
+          const url = await uploadBufferToFolder(buffer, 'reference-images', 'image/jpeg');
+          imageUrls.push(url);
+          log.info('Image uploaded to S3', { url });
+        } catch (error) {
+          log.error('Failed to upload image to S3', error);
+        }
       }
-    } else {
-      log.warn('No imageBase64 in conversation state');
     }
 
     // Create request
@@ -248,51 +276,52 @@ async function createRequestFromState(
       throw new Error(`Failed to create request: ${requestError?.message}`);
     }
 
-    // Create request item with reference_images array (not reference_image_url)
-    log.info('Creating request item', {
+    // Create multiple request items
+    log.info('Creating request items', {
       requestId: request.id,
-      screenshotUrl,
-      hasScreenshotUrl: !!screenshotUrl
+      itemCount: analysis.items.length,
+      imageUrls
     });
 
-    // Get the first (highest confidence) suggested store
-    const suggestedStore = analysis.suggestedStores?.[0];
+    for (let i = 0; i < analysis.items.length; i++) {
+      const item = analysis.items[i];
+      const imageIndex = item.imageIndex ?? i;
+      const itemImageUrl = imageUrls[imageIndex] || imageUrls[0] || null;
+      const matchedRelease = matchedReleases?.get(i);
 
-    // Build insert data - include matched_release_id only if we have a match
-    const itemData: Record<string, unknown> = {
-      request_id: request.id,
-      name: analysis.productName,
-      category: analysis.category || 'other',
-      park: analysis.park || 'disney',
-      quantity: 1,
-      notes: analysis.size ? `Size: ${analysis.size}` : null,
-      reference_images: screenshotUrl ? [screenshotUrl] : [],
-      store_name: suggestedStore?.store_name || null,
-      land_name: suggestedStore?.land || null,
-      estimated_price: matchedRelease?.price_estimate || null
-    };
+      const itemData: Record<string, unknown> = {
+        request_id: request.id,
+        name: item.productName,
+        category: item.category || 'other',
+        park: item.park || 'disney',
+        quantity: 1,
+        notes: item.size ? `Size: ${item.size}` : null,
+        reference_images: itemImageUrl ? [itemImageUrl] : [],
+        store_name: item.suggestedStore?.store_name || null,
+        land_name: item.suggestedStore?.land || null,
+        estimated_price: matchedRelease?.price_estimate || null
+      };
 
-    // Try to include matched_release_id (column may not exist yet)
-    if (matchedRelease?.id) {
-      itemData.matched_release_id = matchedRelease.id;
-    }
+      // Try to include matched_release_id
+      if (matchedRelease?.id) {
+        itemData.matched_release_id = matchedRelease.id;
+      }
 
-    let { error: itemError } = await supabase
-      .from('request_items')
-      .insert(itemData);
+      let { error: itemError } = await supabase
+        .from('request_items')
+        .insert(itemData);
 
-    // If insert failed due to matched_release_id column not existing, retry without it
-    if (itemError && itemError.message.includes('matched_release_id')) {
-      log.warn('matched_release_id column not found, retrying without it');
-      delete itemData.matched_release_id;
-      const retry = await supabase.from('request_items').insert(itemData);
-      itemError = retry.error;
-    }
+      // Retry without matched_release_id if column doesn't exist
+      if (itemError && itemError.message.includes('matched_release_id')) {
+        log.warn('matched_release_id column not found, retrying without it');
+        delete itemData.matched_release_id;
+        const retry = await supabase.from('request_items').insert(itemData);
+        itemError = retry.error;
+      }
 
-    if (itemError) {
-      log.error('Failed to create request item', itemError);
-    } else {
-      log.info('Request item created successfully with image', { screenshotUrl });
+      if (itemError) {
+        log.error('Failed to create request item', { item: item.productName, error: itemError });
+      }
     }
 
     // Link customer to FB name if not already linked
@@ -302,41 +331,31 @@ async function createRequestFromState(
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://enchantedparkpickups.com';
 
-    const storeInfo = suggestedStore
-      ? `📍 Store: ${suggestedStore.store_name}${suggestedStore.land ? ` (${suggestedStore.land})` : ''}\n`
-      : '';
-
-    // Build release match info for display
-    let releaseInfo = '';
-    if (matchedRelease) {
-      releaseInfo = `\n🔗 Matched: ${matchedRelease.title}\n`;
-      if (matchedRelease.price_estimate) {
-        releaseInfo += `💰 Est: $${matchedRelease.price_estimate}\n`;
+    // Build items list for display
+    const itemsList = analysis.items.map((item, i) => {
+      let line = `  ${i + 1}. ${item.productName}`;
+      if (item.size) line += ` (${item.size})`;
+      if (item.suggestedStore) line += `\n      📍 ${item.suggestedStore.store_name}`;
+      const matched = matchedReleases?.get(i);
+      if (matched) {
+        line += `\n      🔗 ${matched.title}`;
+        if (matched.price_estimate) line += ` - $${matched.price_estimate}`;
       }
-      if (matchedRelease.ai_demand_score) {
-        releaseInfo += `🔥 Demand: ${matchedRelease.ai_demand_score}/10\n`;
-      }
-      if (matchedRelease.is_limited_edition) {
-        releaseInfo += `⚠️ Limited Edition\n`;
-      }
-    }
+      return line;
+    }).join('\n');
 
     await ctx.reply(
-      `✅ Request created!\n\n` +
+      `✅ Request created with ${analysis.items.length} item(s)!\n\n` +
       `Customer: ${customer.name}\n` +
-      `Item: ${analysis.productName}\n` +
-      `${analysis.size ? `Size: ${analysis.size}\n` : ''}` +
-      `${analysis.park ? `Park: ${analysis.park}\n` : ''}` +
-      `${storeInfo}` +
-      `${releaseInfo}` +
-      `\nView in CRM: ${baseUrl}/admin/requests/${request.id}`,
+      `Items:\n${itemsList}\n\n` +
+      `View in CRM: ${baseUrl}/admin/requests/${request.id}`,
       { parse_mode: 'HTML' }
     );
 
     log.info('Request created from Telegram', {
       requestId: request.id,
       customerId: customer.id,
-      product: analysis.productName
+      itemCount: analysis.items.length
     });
 
   } catch (error) {
@@ -366,26 +385,19 @@ export function createTelegramBot(): Telegraf {
     return next();
   });
 
-  // Handle photo uploads
-  bot.on('photo', async (ctx) => {
+  /**
+   * Process images after collection (single or media group)
+   */
+  async function processImages(
+    ctx: Context,
+    images: Array<{ base64: string }>,
+    caption?: string
+  ): Promise<void> {
     try {
-      const message = ctx.message as Message.PhotoMessage;
-      await ctx.reply('Analyzing screenshot...');
+      // Analyze all images together
+      const analysis = await analyzeScreenshots(images, caption);
 
-      // Get highest resolution photo
-      const photo = message.photo[message.photo.length - 1];
-      const file = await ctx.telegram.getFile(photo.file_id);
-      const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-
-      // Download and convert to base64
-      const response = await fetch(fileUrl);
-      const buffer = await response.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
-
-      // Analyze with Claude Vision
-      const analysis = await analyzeScreenshot(base64);
-
-      if (!analysis.isValidRequest) {
+      if (!analysis.isValidRequest || analysis.items.length === 0) {
         await ctx.reply(
           'Could not identify a product request in this image.\n' +
           'Please upload a screenshot of a customer requesting an item.'
@@ -393,32 +405,48 @@ export function createTelegramBot(): Telegraf {
         return;
       }
 
-      // Try to match to existing release
-      let matchedRelease: MatchedRelease | undefined;
-      try {
-        const releaseMatch = await findMatchingRelease(analysis.productName, analysis.category);
-        if (releaseMatch.found && releaseMatch.release) {
-          matchedRelease = {
-            id: releaseMatch.release.id,
-            title: releaseMatch.release.title,
-            price_estimate: releaseMatch.release.price_estimate,
-            ai_demand_score: releaseMatch.release.ai_demand_score,
-            is_limited_edition: releaseMatch.release.is_limited_edition,
-            confidence: releaseMatch.confidence
-          };
-          log.info('Matched to release', {
-            productName: analysis.productName,
-            releaseTitle: matchedRelease.title,
-            confidence: matchedRelease.confidence
-          });
+      log.info('Analysis complete', {
+        customerName: analysis.customerName,
+        itemCount: analysis.items.length,
+        imageCount: images.length
+      });
+
+      // Try to match releases for each item
+      const matchedReleases = new Map<number, MatchedRelease>();
+      for (let i = 0; i < analysis.items.length; i++) {
+        const item = analysis.items[i];
+        try {
+          const releaseMatch = await findMatchingRelease(item.productName, item.category);
+          if (releaseMatch.found && releaseMatch.release) {
+            matchedReleases.set(i, {
+              id: releaseMatch.release.id,
+              title: releaseMatch.release.title,
+              price_estimate: releaseMatch.release.price_estimate,
+              ai_demand_score: releaseMatch.release.ai_demand_score,
+              is_limited_edition: releaseMatch.release.is_limited_edition,
+              confidence: releaseMatch.confidence
+            });
+          }
+        } catch (error) {
+          log.error('Error matching release', { item: item.productName, error });
         }
-      } catch (error) {
-        log.error('Error matching release', error);
-        // Continue without release match
       }
 
       // Try to match customer
       const match = await matchCustomerByFBName(analysis.customerName);
+
+      // Build items list for preview
+      const itemsList = analysis.items.map((item, i) => {
+        let line = `${i + 1}. ${item.productName}`;
+        if (item.size) line += ` (${item.size})`;
+        if (item.suggestedStore) line += `\n   📍 ${item.suggestedStore.store_name}`;
+        const matched = matchedReleases.get(i);
+        if (matched) {
+          line += `\n   🔗 ${matched.title}`;
+          if (matched.price_estimate) line += ` ($${matched.price_estimate})`;
+        }
+        return line;
+      }).join('\n');
 
       if (match.found && match.customer) {
         // Customer found - confirm and create request
@@ -427,39 +455,16 @@ export function createTelegramBot(): Telegraf {
           data: {
             analysis,
             customer: match.customer,
-            imageBase64: base64,
-            matchedRelease
+            images,
+            matchedReleases
           }
         });
-
-        const storeHint = analysis.suggestedStores?.[0]
-          ? `📍 Likely at: ${analysis.suggestedStores[0].store_name}${analysis.suggestedStores[0].land ? ` (${analysis.suggestedStores[0].land})` : ''}\n`
-          : '';
-
-        // Build release match preview
-        let releaseHint = '';
-        if (matchedRelease) {
-          releaseHint = `\n🔗 Matched: ${matchedRelease.title}\n`;
-          if (matchedRelease.price_estimate) {
-            releaseHint += `💰 Est: $${matchedRelease.price_estimate}\n`;
-          }
-          if (matchedRelease.ai_demand_score) {
-            releaseHint += `🔥 Demand: ${matchedRelease.ai_demand_score}/10\n`;
-          }
-          if (matchedRelease.is_limited_edition) {
-            releaseHint += `⚠️ Limited Edition\n`;
-          }
-        }
 
         await ctx.reply(
           `Found customer: ${match.customer.name}\n` +
           `(matched on ${match.matchedOn})\n\n` +
-          `Product: ${analysis.productName}\n` +
-          `${analysis.size ? `Size: ${analysis.size}\n` : ''}` +
-          `${analysis.park ? `Park: ${analysis.park}\n` : ''}` +
-          `${storeHint}` +
-          `${releaseHint}` +
-          `${analysis.notes ? `Notes: ${analysis.notes}\n` : ''}\n` +
+          `Items (${analysis.items.length}):\n${itemsList}\n\n` +
+          `${analysis.notes ? `Notes: ${analysis.notes}\n\n` : ''}` +
           `Create this request?`,
           {
             reply_markup: {
@@ -477,13 +482,14 @@ export function createTelegramBot(): Telegraf {
           step: 'customer_not_found',
           data: {
             analysis,
-            imageBase64: base64,
+            images,
             suggestions: match.suggestions,
-            matchedRelease
+            matchedReleases
           }
         });
 
         let message = `Customer "${analysis.customerName}" not found.\n\n`;
+        message += `Items (${analysis.items.length}):\n${itemsList}\n\n`;
 
         if (match.suggestions && match.suggestions.length > 0) {
           message += `Similar customers:\n`;
@@ -503,6 +509,105 @@ export function createTelegramBot(): Telegraf {
           }
         });
       }
+    } catch (error) {
+      log.error('Error processing images', error);
+      await ctx.reply('Error processing images. Please try again.');
+    }
+  }
+
+  /**
+   * Process a media group after collection timeout
+   */
+  async function processMediaGroup(groupId: string, ctx: Context): Promise<void> {
+    const buffer = mediaGroupBuffers.get(groupId);
+    if (!buffer || buffer.photos.length === 0) return;
+
+    // Clear the buffer
+    mediaGroupBuffers.delete(groupId);
+
+    log.info('Processing media group', {
+      groupId,
+      photoCount: buffer.photos.length,
+      caption: buffer.caption
+    });
+
+    await ctx.reply(`Analyzing ${buffer.photos.length} images...`);
+
+    // Download all photos
+    const images: Array<{ base64: string }> = [];
+    for (const photo of buffer.photos) {
+      try {
+        const file = await ctx.telegram.getFile(photo.fileId);
+        const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+        const response = await fetch(fileUrl);
+        const arrayBuffer = await response.arrayBuffer();
+        images.push({ base64: Buffer.from(arrayBuffer).toString('base64') });
+      } catch (error) {
+        log.error('Failed to download photo', { fileId: photo.fileId, error });
+      }
+    }
+
+    if (images.length === 0) {
+      await ctx.reply('Failed to download images. Please try again.');
+      return;
+    }
+
+    await processImages(ctx, images, buffer.caption);
+  }
+
+  // Handle photo uploads
+  bot.on('photo', async (ctx) => {
+    try {
+      const message = ctx.message as Message.PhotoMessage;
+      const mediaGroupId = (message as unknown as { media_group_id?: string }).media_group_id;
+
+      if (mediaGroupId) {
+        // Part of a media group - buffer it
+        const existing = mediaGroupBuffers.get(mediaGroupId);
+
+        if (existing) {
+          // Clear existing timeout
+          if (existing.timeoutId) {
+            clearTimeout(existing.timeoutId);
+          }
+          // Add photo to existing buffer
+          const photo = message.photo[message.photo.length - 1];
+          existing.photos.push({ fileId: photo.file_id });
+          if (message.caption && !existing.caption) {
+            existing.caption = message.caption;
+          }
+        } else {
+          // Create new buffer
+          const photo = message.photo[message.photo.length - 1];
+          mediaGroupBuffers.set(mediaGroupId, {
+            photos: [{ fileId: photo.file_id }],
+            chatId: ctx.chat!.id,
+            fromId: ctx.from!.id,
+            caption: message.caption,
+            timestamp: Date.now()
+          });
+        }
+
+        // Set timeout to process after 1.5 seconds
+        const buffer = mediaGroupBuffers.get(mediaGroupId)!;
+        buffer.timeoutId = setTimeout(() => {
+          processMediaGroup(mediaGroupId, ctx);
+        }, 1500);
+
+        return;
+      }
+
+      // Single photo - process immediately
+      await ctx.reply('Analyzing screenshot...');
+
+      const photo = message.photo[message.photo.length - 1];
+      const file = await ctx.telegram.getFile(photo.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+      const response = await fetch(fileUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+      await processImages(ctx, [{ base64 }], message.caption);
 
     } catch (error) {
       log.error('Error processing photo', error);
