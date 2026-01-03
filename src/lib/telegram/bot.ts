@@ -258,21 +258,36 @@ async function createRequestFromState(
     // Get the first (highest confidence) suggested store
     const suggestedStore = analysis.suggestedStores?.[0];
 
-    const { error: itemError } = await supabase
+    // Build insert data - include matched_release_id only if we have a match
+    const itemData: Record<string, unknown> = {
+      request_id: request.id,
+      name: analysis.productName,
+      category: analysis.category || 'other',
+      park: analysis.park || 'disney',
+      quantity: 1,
+      notes: analysis.size ? `Size: ${analysis.size}` : null,
+      reference_images: screenshotUrl ? [screenshotUrl] : [],
+      store_name: suggestedStore?.store_name || null,
+      land_name: suggestedStore?.land || null,
+      estimated_price: matchedRelease?.price_estimate || null
+    };
+
+    // Try to include matched_release_id (column may not exist yet)
+    if (matchedRelease?.id) {
+      itemData.matched_release_id = matchedRelease.id;
+    }
+
+    let { error: itemError } = await supabase
       .from('request_items')
-      .insert({
-        request_id: request.id,
-        name: analysis.productName,
-        category: analysis.category || 'other',
-        park: analysis.park || 'disney',
-        quantity: 1,
-        notes: analysis.size ? `Size: ${analysis.size}` : null,
-        reference_images: screenshotUrl ? [screenshotUrl] : [],
-        store_name: suggestedStore?.store_name || null,
-        land_name: suggestedStore?.land || null,
-        matched_release_id: matchedRelease?.id || null,
-        estimated_price: matchedRelease?.price_estimate || null
-      });
+      .insert(itemData);
+
+    // If insert failed due to matched_release_id column not existing, retry without it
+    if (itemError && itemError.message.includes('matched_release_id')) {
+      log.warn('matched_release_id column not found, retrying without it');
+      delete itemData.matched_release_id;
+      const retry = await supabase.from('request_items').insert(itemData);
+      itemError = retry.error;
+    }
 
     if (itemError) {
       log.error('Failed to create request item', itemError);
