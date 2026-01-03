@@ -61,6 +61,32 @@ interface ScreenshotAnalysis {
   park?: 'disney' | 'universal' | 'seaworld';
   category?: string;
   urgency?: 'normal' | 'urgent' | 'asap';
+  suggestedStores?: Array<{
+    store_name: string;
+    park: string;
+    land?: string;
+    confidence: 'high' | 'medium' | 'low';
+  }>;
+}
+
+/**
+ * Fetch store locations from database for AI context
+ */
+async function getStoreLocations(): Promise<string> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from('park_stores')
+    .select('park, land, store_name, notes')
+    .eq('is_active', true)
+    .order('park')
+    .order('land');
+
+  if (!data || data.length === 0) return '';
+
+  // Format as concise list for AI prompt
+  return data.map(s =>
+    `- ${s.store_name} (${s.park}${s.land ? ` - ${s.land}` : ''})${s.notes ? `: ${s.notes}` : ''}`
+  ).join('\n');
 }
 
 /**
@@ -69,10 +95,13 @@ interface ScreenshotAnalysis {
 async function analyzeScreenshot(base64: string): Promise<ScreenshotAnalysis> {
   const anthropic = new Anthropic();
 
+  // Fetch store locations for AI context
+  const storeList = await getStoreLocations();
+
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
+      max_tokens: 2048,
       messages: [{
         role: 'user',
         content: [
@@ -105,6 +134,15 @@ async function analyzeScreenshot(base64: string): Promise<ScreenshotAnalysis> {
 
 7. Urgency - normal, urgent, or asap based on their message tone
 
+8. Suggested Stores - Based on the product type/theme, suggest 1-3 likely store locations where this item might be found. Choose from this list:
+${storeList}
+
+Match stores based on:
+- Character/franchise themes (e.g., Haunted Mansion items → Memento Mori, Star Wars → Galaxy's Edge shops)
+- Product categories (e.g., Loungefly bags → boutique stores, ears → Castle Couture)
+- Park-specific exclusives (e.g., EPCOT merchandise → Creations Shop)
+- General merchandise → main stores like Emporium, World of Disney
+
 If this is NOT a product request (just casual chat, meme, unrelated content), set isValidRequest to false.
 
 Return ONLY valid JSON in this exact format:
@@ -116,7 +154,10 @@ Return ONLY valid JSON in this exact format:
   "notes": "Any special notes" or null,
   "park": "disney" or null,
   "category": "apparel" or null,
-  "urgency": "normal"
+  "urgency": "normal",
+  "suggestedStores": [
+    {"store_name": "Store Name", "park": "Park Name", "land": "Land Name or null", "confidence": "high"}
+  ]
 }`
           }
         ]
@@ -202,6 +243,9 @@ async function createRequestFromState(
       hasScreenshotUrl: !!screenshotUrl
     });
 
+    // Get the first (highest confidence) suggested store
+    const suggestedStore = analysis.suggestedStores?.[0];
+
     const { error: itemError } = await supabase
       .from('request_items')
       .insert({
@@ -211,7 +255,9 @@ async function createRequestFromState(
         park: analysis.park || 'disney',
         quantity: 1,
         notes: analysis.size ? `Size: ${analysis.size}` : null,
-        reference_images: screenshotUrl ? [screenshotUrl] : []
+        reference_images: screenshotUrl ? [screenshotUrl] : [],
+        store_name: suggestedStore?.store_name || null,
+        land_name: suggestedStore?.land || null
       });
 
     if (itemError) {
@@ -227,12 +273,17 @@ async function createRequestFromState(
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://enchantedparkpickups.com';
 
+    const storeInfo = suggestedStore
+      ? `📍 Store: ${suggestedStore.store_name}${suggestedStore.land ? ` (${suggestedStore.land})` : ''}\n`
+      : '';
+
     await ctx.reply(
       `Request created!\n\n` +
       `Customer: ${customer.name}\n` +
       `Item: ${analysis.productName}\n` +
       `${analysis.size ? `Size: ${analysis.size}\n` : ''}` +
       `${analysis.park ? `Park: ${analysis.park}\n` : ''}` +
+      `${storeInfo}` +
       `\nView in CRM: ${baseUrl}/admin/requests/${request.id}`,
       { parse_mode: 'HTML' }
     );
@@ -311,12 +362,17 @@ export function createTelegramBot(): Telegraf {
           }
         });
 
+        const storeHint = analysis.suggestedStores?.[0]
+          ? `📍 Likely at: ${analysis.suggestedStores[0].store_name}${analysis.suggestedStores[0].land ? ` (${analysis.suggestedStores[0].land})` : ''}\n`
+          : '';
+
         await ctx.reply(
           `Found customer: ${match.customer.name}\n` +
           `(matched on ${match.matchedOn})\n\n` +
           `Product: ${analysis.productName}\n` +
           `${analysis.size ? `Size: ${analysis.size}\n` : ''}` +
           `${analysis.park ? `Park: ${analysis.park}\n` : ''}` +
+          `${storeHint}` +
           `${analysis.notes ? `Notes: ${analysis.notes}\n` : ''}\n` +
           `Create this request?`,
           {
