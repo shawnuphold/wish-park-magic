@@ -223,12 +223,15 @@ export async function createCustomerFromFacebook(
 ): Promise<CustomerData | null> {
   const supabase = getSupabaseAdmin();
 
+  // Generate placeholder email if none provided (database requires NOT NULL)
+  const customerEmail = email || `fb.${Date.now()}@placeholder.local`;
+
   // Create customer with FB name as both name and facebook_name
   const { data: newCustomer, error } = await supabase
     .from('customers')
     .insert({
       name: fbName.trim(),
-      email: email || null,
+      email: customerEmail,
       facebook_name: fbName.trim(),
       facebook_profile_url: fbProfileUrl || null,
       country: 'US' // Default
