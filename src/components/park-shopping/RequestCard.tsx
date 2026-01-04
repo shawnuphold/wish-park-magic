@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -18,8 +18,26 @@ import {
   Calendar,
   MapPin,
   MessageSquare,
+  Loader2,
 } from 'lucide-react';
 import type { NotFoundReason } from '@/lib/park-shopping-config';
+
+// Check if URL is from our S3 bucket
+const isS3Url = (url: string) => url.includes('enchantedbucket.s3');
+
+// Fetch signed URL for S3 images
+async function getSignedUrl(url: string): Promise<string> {
+  if (!isS3Url(url)) return url;
+
+  try {
+    const response = await fetch(`/api/image?url=${encodeURIComponent(url)}`);
+    if (!response.ok) return url;
+    const data = await response.json();
+    return data.signedUrl || url;
+  } catch {
+    return url;
+  }
+}
 
 export interface RequestItemData {
   id: string;
@@ -74,11 +92,14 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
   const [showFoundForm, setShowFoundForm] = useState(false);
   const [showNotFoundForm, setShowNotFoundForm] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [signedImageUrl, setSignedImageUrl] = useState<string | null>(null);
+  const [signedImages, setSignedImages] = useState<string[]>([]);
+  const [loadingImage, setLoadingImage] = useState(true);
 
   const customer = item.request.customer;
 
   // Get image URL: prioritize found images for found items, then reference images
-  const getImageUrl = () => {
+  const getRawImageUrl = () => {
     if (item.status === 'found') {
       // Check found_images array first, then found_image_url
       if (item.found_images && item.found_images.length > 0) {
@@ -95,18 +116,45 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
     return item.reference_image_url;
   };
 
-  const imageUrl = getImageUrl();
+  const rawImageUrl = getRawImageUrl();
 
   // Collect all images for lightbox
-  const images: string[] = [];
-  if (item.reference_images) images.push(...item.reference_images);
+  const rawImages: string[] = [];
+  if (item.reference_images) rawImages.push(...item.reference_images);
   if (item.reference_image_url && !item.reference_images?.includes(item.reference_image_url)) {
-    images.push(item.reference_image_url);
+    rawImages.push(item.reference_image_url);
   }
-  if (item.found_images) images.push(...item.found_images);
+  if (item.found_images) rawImages.push(...item.found_images);
   if (item.found_image_url && !item.found_images?.includes(item.found_image_url)) {
-    images.push(item.found_image_url);
+    rawImages.push(item.found_image_url);
   }
+
+  // Fetch signed URLs for S3 images
+  useEffect(() => {
+    const fetchSignedUrls = async () => {
+      setLoadingImage(true);
+
+      // Get signed URL for main image
+      if (rawImageUrl) {
+        const signed = await getSignedUrl(rawImageUrl);
+        setSignedImageUrl(signed);
+      } else {
+        setSignedImageUrl(null);
+      }
+
+      // Get signed URLs for all images (for lightbox)
+      if (rawImages.length > 0) {
+        const signedUrls = await Promise.all(rawImages.map(getSignedUrl));
+        setSignedImages(signedUrls);
+      } else {
+        setSignedImages([]);
+      }
+
+      setLoadingImage(false);
+    };
+
+    fetchSignedUrls();
+  }, [item.id, rawImageUrl, rawImages.length]);
 
   const handleReset = async () => {
     setResetting(true);
@@ -156,12 +204,16 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
         {/* Large Image - 70% of card */}
         <div
           className="relative aspect-[4/3] bg-muted cursor-pointer"
-          onClick={() => images.length > 0 && setShowLightbox(true)}
+          onClick={() => signedImages.length > 0 && setShowLightbox(true)}
         >
-          {imageUrl ? (
+          {loadingImage ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : signedImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={imageUrl}
+              src={signedImageUrl}
               alt={item.name}
               className="w-full h-full object-contain"
               onError={(e) => {
@@ -174,7 +226,7 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
             </div>
           )}
           {/* Tap to zoom indicator */}
-          {imageUrl && (
+          {signedImageUrl && !loadingImage && (
             <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
               Tap to zoom
             </div>
@@ -330,9 +382,9 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
       </Card>
 
       {/* Lightbox */}
-      {showLightbox && images.length > 0 && (
+      {showLightbox && signedImages.length > 0 && (
         <ImageLightbox
-          images={images}
+          images={signedImages}
           initialIndex={0}
           onClose={() => setShowLightbox(false)}
         />
