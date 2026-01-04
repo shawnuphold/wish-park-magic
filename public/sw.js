@@ -1,5 +1,5 @@
 // Service Worker for Enchanted Park Pickups Admin
-const CACHE_NAME = 'epp-admin-v1';
+const CACHE_NAME = 'epp-admin-v2';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install

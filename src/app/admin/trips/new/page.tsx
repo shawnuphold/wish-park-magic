@@ -9,16 +9,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+// Using native inputs to avoid Radix UI infinite loop bug
+// import { Checkbox } from '@/components/ui/checkbox';
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from '@/components/ui/select';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import type { Park } from '@/lib/database.types';
 
 interface AdminUser {
@@ -41,7 +42,6 @@ const parkOptions: { value: Park; label: string }[] = [
 
 export default function NewTripPage() {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [selectedParks, setSelectedParks] = useState<Park[]>([]);
@@ -120,20 +120,12 @@ export default function NewTripPage() {
     e.preventDefault();
 
     if (!date) {
-      toast({
-        title: 'Error',
-        description: 'Please select a date',
-        variant: 'destructive',
-      });
+      toast.error('Please select a date');
       return;
     }
 
     if (selectedParks.length === 0) {
-      toast({
-        title: 'Error',
-        description: 'Please select at least one park',
-        variant: 'destructive',
-      });
+      toast.error('Please select at least one park');
       return;
     }
 
@@ -168,19 +160,12 @@ export default function NewTripPage() {
         if (updateError) throw updateError;
       }
 
-      toast({
-        title: 'Trip planned',
-        description: `Shopping trip scheduled for ${date.toLocaleDateString()}`,
-      });
+      toast.success(`Shopping trip scheduled for ${date.toLocaleDateString()}`);
 
       router.push(`/admin/trips/${trip.id}`);
     } catch (error: any) {
       console.error('Error creating trip:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to create trip',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Failed to create trip');
     } finally {
       setLoading(false);
     }
@@ -233,10 +218,12 @@ export default function NewTripPage() {
               <CardContent className="space-y-3">
                 {parkOptions.map((park) => (
                   <div key={park.value} className="flex items-center space-x-2">
-                    <Checkbox
+                    <input
+                      type="checkbox"
                       id={park.value}
                       checked={selectedParks.includes(park.value)}
-                      onCheckedChange={() => togglePark(park.value)}
+                      onChange={() => togglePark(park.value)}
+                      className="h-4 w-4 rounded border-gray-300 text-gold focus:ring-gold"
                     />
                     <Label htmlFor={park.value} className="font-normal">
                       {park.label}
@@ -252,19 +239,20 @@ export default function NewTripPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Assign to Shopper</Label>
-                  <Select value={shopperId} onValueChange={setShopperId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a shopper (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {shoppers.map((shopper) => (
-                        <SelectItem key={shopper.id} value={shopper.id}>
-                          {shopper.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="shopper-select">Assign to Shopper</Label>
+                  <select
+                    id="shopper-select"
+                    value={shopperId}
+                    onChange={(e) => setShopperId(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">Select a shopper (optional)</option>
+                    {shoppers.map((shopper) => (
+                      <option key={shopper.id} value={shopper.id}>
+                        {shopper.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <Label>Notes</Label>
@@ -303,9 +291,12 @@ export default function NewTripPage() {
                       onClick={() => toggleRequest(request.id)}
                     >
                       <div className="flex items-center gap-3">
-                        <Checkbox
+                        <input
+                          type="checkbox"
                           checked={selectedRequests.includes(request.id)}
-                          onCheckedChange={() => toggleRequest(request.id)}
+                          onChange={() => toggleRequest(request.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-4 w-4 rounded border-gray-300 text-gold focus:ring-gold"
                         />
                         <div className="flex-1">
                           <p className="font-medium">{request.customer_name}</p>

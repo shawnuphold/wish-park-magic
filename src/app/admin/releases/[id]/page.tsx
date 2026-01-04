@@ -10,13 +10,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+// Using native select to avoid Radix UI infinite loop bug
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -178,14 +179,20 @@ export default function ReleaseDetailPage() {
           location: release.location || '',
         });
 
-        // Fetch article sources (table may not exist in generated types yet)
-        const { data: sourcesData } = await (supabase as any)
-          .from('release_article_sources')
-          .select('*')
-          .eq('release_id', id)
-          .order('discovered_at', { ascending: false });
+        // Fetch article sources (table may not exist yet - migration pending)
+        try {
+          const { data: sourcesData, error: sourcesError } = await (supabase as any)
+            .from('release_article_sources')
+            .select('*')
+            .eq('release_id', id)
+            .order('discovered_at', { ascending: false });
 
-        setSources(sourcesData || []);
+          if (!sourcesError) {
+            setSources(sourcesData || []);
+          }
+        } catch {
+          // Table doesn't exist yet - silently ignore
+        }
       } catch (error) {
         console.error('Error fetching release:', error);
         toast({
@@ -585,24 +592,17 @@ export default function ReleaseDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Status</Label>
-                  <Select
+                  <select
                     value={formData.status}
-                    onValueChange={(v) => setFormData({ ...formData, status: v as ReleaseStatus })}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value as ReleaseStatus })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${opt.color}`} />
-                            {opt.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <Label>Estimated Price</Label>
@@ -617,33 +617,29 @@ export default function ReleaseDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Park</Label>
-                  <Select
+                  <select
                     value={formData.park}
-                    onValueChange={(v) => setFormData({ ...formData, park: v as Park })}
+                    onChange={(e) => setFormData({ ...formData, park: e.target.value as Park })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 capitalize"
                   >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {PARKS.map((p) => (
-                        <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {PARKS.map((p) => (
+                      <option key={p} value={p} className="capitalize">{p}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <Label>Category</Label>
-                  <Select
+                  <select
                     value={formData.category}
-                    onValueChange={(v) => setFormData({ ...formData, category: v as ItemCategory })}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value as ItemCategory })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 capitalize"
                   >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => (
-                        <SelectItem key={c} value={c} className="capitalize">
-                          {c.replace('_', ' ')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c} className="capitalize">
+                        {c.replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
