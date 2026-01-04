@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { Check, X, MapPin, ImageIcon } from 'lucide-react';
+import { Check, X, MapPin, ImageIcon, Undo2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MarkFoundForm } from './MarkFoundForm';
@@ -44,6 +44,7 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
   const [showFoundForm, setShowFoundForm] = useState(false);
   const [showNotFoundOptions, setShowNotFoundOptions] = useState(false);
   const [markingNotFound, setMarkingNotFound] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
 
   const isPending = item.status === 'pending';
@@ -66,6 +67,26 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
     } finally {
       setMarkingNotFound(false);
       setShowNotFoundOptions(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!confirm('Reset this item to pending?')) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const response = await fetch(`/api/shopping/items/${item.id}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (response.ok) {
+        onUpdate();
+      }
+    } catch (error) {
+      console.error('Error resetting item:', error);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -152,31 +173,53 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
 
         {/* Status badges for completed items */}
         {isFound && (
-          <div className="mt-3 flex items-center gap-2">
-            <Badge className="bg-green-100 text-green-700 border-green-200">
-              <Check className="w-3 h-3 mr-1" />
-              Found
-            </Badge>
-            {item.actual_price && (
-              <span className="text-sm font-medium text-green-700">
-                ${item.actual_price.toFixed(2)}
-              </span>
-            )}
-            {item.quantity_found && item.quantity_found < (item.quantity || 1) && (
-              <span className="text-xs text-muted-foreground">
-                ({item.quantity_found} of {item.quantity})
-              </span>
-            )}
+          <div className="mt-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-green-100 text-green-700 border-green-200">
+                <Check className="w-3 h-3 mr-1" />
+                Found
+              </Badge>
+              {item.actual_price && (
+                <span className="text-sm font-medium text-green-700">
+                  ${item.actual_price.toFixed(2)}
+                </span>
+              )}
+              {item.quantity_found && item.quantity_found < (item.quantity || 1) && (
+                <span className="text-xs text-muted-foreground">
+                  ({item.quantity_found} of {item.quantity})
+                </span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-muted-foreground hover:text-foreground"
+              onClick={handleReset}
+              disabled={resetting}
+            >
+              <Undo2 className="w-4 h-4 mr-1" />
+              Reset
+            </Button>
           </div>
         )}
 
         {isNotFound && (
-          <div className="mt-3">
+          <div className="mt-3 flex items-center justify-between">
             <Badge className="bg-red-100 text-red-700 border-red-200">
               <X className="w-3 h-3 mr-1" />
               {item.not_found_reason === 'out_of_stock' ? 'Out of Stock' :
                item.not_found_reason === 'discontinued' ? 'Discontinued' : 'Not Found'}
             </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-muted-foreground hover:text-foreground"
+              onClick={handleReset}
+              disabled={resetting}
+            >
+              <Undo2 className="w-4 h-4 mr-1" />
+              Reset
+            </Button>
           </div>
         )}
 
