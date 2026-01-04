@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAuth } from '@/lib/auth/api-auth';
-import { processAllSources, processFeedSource } from '@/lib/ai/feedFetcher';
+import { processAllSources, processFeedSource, scrapeArticle, processArticle } from '@/lib/ai/feedFetcher';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { timingSafeEqual } from 'crypto';
 
@@ -43,8 +43,58 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}));
   const sourceId = body.sourceId;
+  const articleUrl = body.articleUrl;
 
   try {
+    // Process a single article URL
+    if (articleUrl) {
+      const supabase = getSupabaseAdmin();
+
+      // Delete from processed_articles to allow reprocessing
+      await supabase
+        .from('processed_articles')
+        .delete()
+        .eq('url', articleUrl);
+
+      // Scrape the article
+      console.log('[ManualProcess] Scraping:', articleUrl);
+      const { content, images } = await scrapeArticle(articleUrl);
+      console.log('[ManualProcess] Got content length:', content.length, 'images:', images.length);
+
+      // Create a mock source for processing
+      const mockSource = {
+        id: 'manual',
+        name: 'Manual Import',
+        url: '',
+        type: 'manual',
+        park: 'disney' as const,
+        is_active: true,
+        check_frequency_hours: 24,
+        last_checked: null,
+      };
+
+      // Extract title from URL
+      const title = articleUrl.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || 'Untitled';
+
+      const result = await processArticle(
+        mockSource,
+        articleUrl,
+        title,
+        content,
+        images
+      );
+
+      return NextResponse.json({
+        success: true,
+        articleUrl,
+        contentLength: content.length,
+        imagesFound: images.length,
+        newReleases: result.newReleases,
+        updatedReleases: result.updatedReleases,
+        error: result.error,
+      });
+    }
+
     if (sourceId) {
       // Process specific source
       const supabase = getSupabaseAdmin();
