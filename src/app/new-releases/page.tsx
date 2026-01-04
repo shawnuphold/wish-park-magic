@@ -40,7 +40,6 @@ import {
   Bell,
   X,
   Flame,
-  Calendar,
   Eye,
   CalendarClock,
   Ticket,
@@ -111,7 +110,6 @@ function getCountdown(dateStr: string | null): string {
 
 export default function NewReleasesPage() {
   const [justDropped, setJustDropped] = useState<NewRelease[]>([]);
-  const [comingSoon, setComingSoon] = useState<NewRelease[]>([]);
   const [onRadar, setOnRadar] = useState<NewRelease[]>([]);
   const [allReleases, setAllReleases] = useState<NewRelease[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,17 +147,6 @@ export default function NewReleasesPage() {
           .limit(8);
 
         setJustDropped(dropped || []);
-
-        // Fetch Coming Soon
-        const { data: upcoming } = await supabase
-          .from('new_releases')
-          .select('*')
-          .eq('status', 'coming_soon')
-          .is('merged_into_id', null)
-          .order('projected_release_date', { ascending: true })
-          .limit(8);
-
-        setComingSoon(upcoming || []);
 
         // Fetch On Our Radar (rumored + announced)
         const { data: radar } = await supabase
@@ -427,35 +414,6 @@ export default function NewReleasesPage() {
                   transition={{ delay: index * 0.05 }}
                 >
                   <ReleaseCard release={release} />
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Coming Soon Section */}
-      {comingSoon.length > 0 && (
-        <section className="py-12 bg-gradient-to-b from-purple-50 to-white dark:from-purple-950/20 dark:to-background">
-          <div className="container-wide">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <h2 className="font-heading text-xl font-bold">Coming Soon</h2>
-                <p className="text-sm text-muted-foreground">Mark your calendars for these upcoming releases</p>
-              </div>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {comingSoon.map((release, index) => (
-                <motion.div
-                  key={release.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <ReleaseCard release={release} showCountdown />
                 </motion.div>
               ))}
             </div>

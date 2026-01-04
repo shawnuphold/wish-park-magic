@@ -4,7 +4,8 @@ const BLOCKED_DOMAINS = [
   'chipandco.com',
   'attractionsmagazine.com',
   'disneyfoodblog.com',
-  'allears.net'
+  'allears.net',
+  'laughingplace.com'
 ];
 
 export async function smartFetch(url: string): Promise<Response> {

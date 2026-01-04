@@ -666,8 +666,14 @@ export async function processAllSources(): Promise<{
       totalUpdated += result.updatedReleases;
       allErrors.push(...result.errors.map(e => `[${source.name}] ${e}`));
 
+      // Summary logging for this source
+      log.info(`[Feed] ${source.name}: ${result.articlesProcessed} articles, ${result.newReleases} new, ${result.updatedReleases} duplicates updated`);
+
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
+
+    // Final summary logging
+    log.info(`[Feed] TOTAL: ${sourcesProcessed} sources, ${totalArticles} articles, ${totalNew} new releases, ${totalUpdated} duplicates updated`);
 
     return {
       sourcesProcessed,
