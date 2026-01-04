@@ -25,12 +25,14 @@ import {
   Bell,
   Wrench,
   Download,
+  MapPin,
 } from 'lucide-react';
 import { InstallBanner } from '@/components/InstallBanner';
 import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { name: 'Park Shopping', href: '/admin/park-shopping', icon: MapPin },
   { name: 'Customers', href: '/admin/customers', icon: Users },
   { name: 'Requests', href: '/admin/requests', icon: ClipboardList },
   { name: 'Shopping Trips', href: '/admin/trips', icon: ShoppingCart },
