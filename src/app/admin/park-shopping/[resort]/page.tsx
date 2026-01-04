@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RESORTS } from '@/lib/park-shopping-config';
+import { RESORTS, getAllLocations } from '@/lib/park-shopping-config';
 import { ChevronLeft } from 'lucide-react';
 
 interface ResortCounts {
@@ -15,7 +15,7 @@ interface ResortCounts {
   };
 }
 
-export default function ResortParkSelectorPage() {
+export default function ResortLocationSelectorPage() {
   const params = useParams();
   const resort = params.resort as string;
   const router = useRouter();
@@ -31,9 +31,12 @@ export default function ResortParkSelectorPage() {
       return;
     }
 
-    // If single park resort (seaworld), redirect directly to park page
-    if (resortConfig.parks.length === 1) {
-      router.push(`/admin/park-shopping/${resort}/${resortConfig.parks[0].id}`);
+    // Get all locations count
+    const allLocations = getAllLocations(resort);
+
+    // If single location resort, redirect directly to location page
+    if (allLocations.length === 1) {
+      router.push(`/admin/park-shopping/${resort}/${allLocations[0].id}`);
       return;
     }
 
@@ -68,7 +71,8 @@ export default function ResortParkSelectorPage() {
 
   const resortCounts = counts?.[resort];
   const totalRequests = resortCounts?.total || 0;
-  const parkCount = resortConfig.parks.length;
+  const allLocations = getAllLocations(resort);
+  const locationCount = allLocations.length;
 
   return (
     <div className="space-y-6">
@@ -104,11 +108,11 @@ export default function ResortParkSelectorPage() {
             </h1>
             <p className="text-sm text-muted-foreground">
               {totalRequests === 0 ? (
-                `${parkCount} parks • No pending requests`
+                `${locationCount} locations • No pending requests`
               ) : (
                 <>
                   <span className="font-medium text-gold">{totalRequests}</span>
-                  {' pending request'}{totalRequests !== 1 ? 's' : ''} across {parkCount} parks
+                  {' pending request'}{totalRequests !== 1 ? 's' : ''}
                 </>
               )}
             </p>
@@ -116,52 +120,62 @@ export default function ResortParkSelectorPage() {
         </div>
       </div>
 
-      {/* Park cards grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {resortConfig.parks.map((park) => {
-          const parkItemCount = resortCounts?.parks[park.dbValue] || 0;
+      {/* Categories with location cards */}
+      {resortConfig.categories.map((category) => (
+        <div key={category.name} className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            {category.name}
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            {category.locations.map((location) => {
+              const locationCount = resortCounts?.parks[location.dbValue] || 0;
 
-          return (
-            <Link
-              key={park.id}
-              href={`/admin/park-shopping/${resort}/${park.id}`}
-            >
-              <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
-                <CardContent className="p-4 flex flex-col items-center text-center">
-                  <div className="w-full h-12 mb-2 flex items-center justify-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={park.logo}
-                      alt={park.name}
-                      className="max-w-full max-h-full object-contain"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        if (e.currentTarget.nextElementSibling) {
-                          (e.currentTarget.nextElementSibling as HTMLElement).classList.remove('hidden');
-                        }
-                      }}
-                    />
-                    <span className="text-4xl hidden">{park.emoji}</span>
-                  </div>
-                  <h3 className="font-semibold text-foreground text-sm leading-tight">
-                    {park.name}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {parkItemCount === 0 ? (
-                      'No requests'
-                    ) : (
-                      <>
-                        <span className="font-medium text-gold">{parkItemCount}</span>
-                        {' request'}{parkItemCount !== 1 ? 's' : ''}
-                      </>
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
+              return (
+                <Link
+                  key={location.id}
+                  href={`/admin/park-shopping/${resort}/${location.id}`}
+                >
+                  <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+                    <CardContent className="p-3 flex flex-col items-center text-center">
+                      <div className="w-full h-10 mb-2 flex items-center justify-center">
+                        {location.logo ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={location.logo}
+                              alt={location.name}
+                              className="max-w-full max-h-full object-contain"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                if (e.currentTarget.nextElementSibling) {
+                                  (e.currentTarget.nextElementSibling as HTMLElement).classList.remove('hidden');
+                                }
+                              }}
+                            />
+                            <span className="text-3xl hidden">{location.emoji}</span>
+                          </>
+                        ) : (
+                          <span className="text-3xl">{location.emoji}</span>
+                        )}
+                      </div>
+                      <h3 className="font-semibold text-foreground text-xs leading-tight line-clamp-2">
+                        {location.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {locationCount === 0 ? (
+                          <span className="opacity-50">0</span>
+                        ) : (
+                          <span className="font-medium text-gold">{locationCount}</span>
+                        )}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
 
       {/* Empty state */}
       {totalRequests === 0 && (
