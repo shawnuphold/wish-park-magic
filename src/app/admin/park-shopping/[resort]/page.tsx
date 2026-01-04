@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RESORTS } from '@/lib/park-shopping-config';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 
 interface ResortCounts {
   [key: string]: {
@@ -15,8 +15,9 @@ interface ResortCounts {
   };
 }
 
-export default function ResortParkSelectorPage({ params }: { params: Promise<{ resort: string }> }) {
-  const { resort } = use(params);
+export default function ResortParkSelectorPage() {
+  const params = useParams();
+  const resort = params.resort as string;
   const router = useRouter();
   const [counts, setCounts] = useState<ResortCounts | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,7 +105,7 @@ export default function ResortParkSelectorPage({ params }: { params: Promise<{ r
       {/* Park cards grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {resortConfig.parks.map((park) => {
-          const parkCount = resortCounts?.parks[park.dbValue] || 0;
+          const parkItemCount = resortCounts?.parks[park.dbValue] || 0;
 
           return (
             <Link
@@ -118,12 +119,12 @@ export default function ResortParkSelectorPage({ params }: { params: Promise<{ r
                     {park.name}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {parkCount === 0 ? (
+                    {parkItemCount === 0 ? (
                       'No requests'
                     ) : (
                       <>
-                        <span className="font-medium text-gold">{parkCount}</span>
-                        {' request'}{parkCount !== 1 ? 's' : ''}
+                        <span className="font-medium text-gold">{parkItemCount}</span>
+                        {' request'}{parkItemCount !== 1 ? 's' : ''}
                       </>
                     )}
                   </p>

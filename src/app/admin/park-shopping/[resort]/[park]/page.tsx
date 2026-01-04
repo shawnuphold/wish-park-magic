@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,8 +13,10 @@ import { StoreSection } from '@/components/park-shopping/StoreSection';
 import { RequestCard, type RequestItemData } from '@/components/park-shopping/RequestCard';
 import { ChevronLeft, Search, RefreshCw } from 'lucide-react';
 
-export default function ParkRequestsPage({ params }: { params: Promise<{ resort: string; park: string }> }) {
-  const { resort, park: parkSlug } = use(params);
+export default function ParkRequestsPage() {
+  const params = useParams();
+  const resort = params.resort as string;
+  const parkSlug = params.park as string;
   const router = useRouter();
   const { toast } = useToast();
   const [items, setItems] = useState<RequestItemData[]>([]);
