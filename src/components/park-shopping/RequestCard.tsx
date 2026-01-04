@@ -26,7 +26,9 @@ export interface RequestItemData {
   name: string;
   description: string | null;
   reference_image_url: string | null;
+  reference_images: string[] | null;
   found_image_url: string | null;
+  found_images: string[] | null;
   quantity: number;
   estimated_price: number | null;
   actual_price: number | null;
@@ -74,11 +76,37 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
   const [resetting, setResetting] = useState(false);
 
   const customer = item.request.customer;
-  const imageUrl = item.status === 'found' && item.found_image_url
-    ? item.found_image_url
-    : item.reference_image_url;
 
-  const images = [imageUrl].filter(Boolean) as string[];
+  // Get image URL: prioritize found images for found items, then reference images
+  const getImageUrl = () => {
+    if (item.status === 'found') {
+      // Check found_images array first, then found_image_url
+      if (item.found_images && item.found_images.length > 0) {
+        return item.found_images[0];
+      }
+      if (item.found_image_url) {
+        return item.found_image_url;
+      }
+    }
+    // Fall back to reference images
+    if (item.reference_images && item.reference_images.length > 0) {
+      return item.reference_images[0];
+    }
+    return item.reference_image_url;
+  };
+
+  const imageUrl = getImageUrl();
+
+  // Collect all images for lightbox
+  const images: string[] = [];
+  if (item.reference_images) images.push(...item.reference_images);
+  if (item.reference_image_url && !item.reference_images?.includes(item.reference_image_url)) {
+    images.push(item.reference_image_url);
+  }
+  if (item.found_images) images.push(...item.found_images);
+  if (item.found_image_url && !item.found_images?.includes(item.found_image_url)) {
+    images.push(item.found_image_url);
+  }
 
   const handleReset = async () => {
     setResetting(true);
