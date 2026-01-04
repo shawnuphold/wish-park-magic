@@ -22,6 +22,7 @@ interface StoreSectionProps {
     notes?: string;
   }) => Promise<void>;
   onReset: (itemId: string) => Promise<void>;
+  onDelete: (itemId: string) => Promise<void>;
 }
 
 export function StoreSection({
@@ -31,6 +32,7 @@ export function StoreSection({
   onMarkFound,
   onMarkNotFound,
   onReset,
+  onDelete,
 }: StoreSectionProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -98,6 +100,7 @@ export function StoreSection({
               onMarkFound={onMarkFound}
               onMarkNotFound={onMarkNotFound}
               onReset={onReset}
+              onDelete={onDelete}
             />
           ))}
         </div>

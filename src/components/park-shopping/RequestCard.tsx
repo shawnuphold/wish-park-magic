@@ -19,6 +19,7 @@ import {
   MapPin,
   MessageSquare,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import type { NotFoundReason } from '@/lib/park-shopping-config';
 
@@ -85,13 +86,16 @@ interface RequestCardProps {
     notes?: string;
   }) => Promise<void>;
   onReset: (itemId: string) => Promise<void>;
+  onDelete: (itemId: string) => Promise<void>;
 }
 
-export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: RequestCardProps) {
+export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset, onDelete }: RequestCardProps) {
   const [showLightbox, setShowLightbox] = useState(false);
   const [showFoundForm, setShowFoundForm] = useState(false);
   const [showNotFoundForm, setShowNotFoundForm] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [signedImageUrl, setSignedImageUrl] = useState<string | null>(null);
   const [signedImages, setSignedImages] = useState<string[]>([]);
   const [loadingImage, setLoadingImage] = useState(true);
@@ -162,6 +166,16 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
       await onReset(item.id);
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await onDelete(item.id);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -350,6 +364,47 @@ export function RequestCard({ item, onMarkFound, onMarkNotFound, onReset }: Requ
               <RotateCcw className={cn("w-4 h-4 mr-2", resetting && "animate-spin")} />
               Reset to Pending
             </Button>
+          )}
+
+          {/* Delete button - always visible */}
+          <Button
+            onClick={() => setShowDeleteConfirm(true)}
+            variant="ghost"
+            className="w-full text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete Request
+          </Button>
+
+          {/* Delete confirmation */}
+          {showDeleteConfirm && (
+            <div className="border-t pt-3 mt-2 space-y-2">
+              <p className="text-sm text-center text-muted-foreground">
+                Delete &quot;{item.name}&quot;?
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDelete}
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    'Delete'
+                  )}
+                </Button>
+              </div>
+            </div>
           )}
         </div>
 

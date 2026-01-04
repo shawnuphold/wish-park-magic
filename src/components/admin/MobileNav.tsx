@@ -32,6 +32,7 @@ import {
   Plus,
   ChevronRight,
   LogOut,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -39,6 +40,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 // All navigation items matching sidebar
 const allNavItems = [
   { name: 'Dashboard', href: '/admin', icon: Home },
+  { name: 'Park Shopping', href: '/admin/park-shopping', icon: MapPin },
   { name: 'Customers', href: '/admin/customers', icon: Users },
   { name: 'Requests', href: '/admin/requests', icon: ClipboardList },
   { name: 'Shopping Trips', href: '/admin/trips', icon: ShoppingCart },
@@ -52,10 +54,10 @@ const allNavItems = [
   { name: 'Settings', href: '/admin/settings', icon: Settings },
 ];
 
-// Quick access items for bottom bar
+// Quick access items for bottom bar (Park Shopping is key for mobile use at parks)
 const bottomNavItems = [
   { name: 'Home', href: '/admin', icon: Home },
-  { name: 'Customers', href: '/admin/customers', icon: Users },
+  { name: 'Shop', href: '/admin/park-shopping', icon: MapPin },
   { name: 'Requests', href: '/admin/requests', icon: ClipboardList },
   { name: 'Trips', href: '/admin/trips', icon: ShoppingCart },
 ];

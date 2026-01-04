@@ -236,6 +236,33 @@ export default function ParkRequestsPage() {
     }
   };
 
+  const handleDelete = async (itemId: string) => {
+    try {
+      const res = await fetch(`/api/park-shopping/items/${itemId}/delete`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete');
+      }
+
+      toast({
+        title: 'Deleted',
+        description: 'Request item has been deleted.',
+      });
+
+      // Remove item from state without refetching
+      setItems(prev => prev.filter(i => i.id !== itemId));
+    } catch (error) {
+      console.error('Error deleting:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete item.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (!resortConfig || !parkConfig) {
     return null;
   }
@@ -371,6 +398,7 @@ export default function ParkRequestsPage() {
               onMarkFound={handleMarkFound}
               onMarkNotFound={handleMarkNotFound}
               onReset={handleReset}
+              onDelete={handleDelete}
             />
           ))}
         </div>
@@ -384,6 +412,7 @@ export default function ParkRequestsPage() {
               onMarkFound={handleMarkFound}
               onMarkNotFound={handleMarkNotFound}
               onReset={handleReset}
+              onDelete={handleDelete}
             />
           ))}
         </div>
