@@ -16,8 +16,6 @@ import { Message, Update } from 'telegraf/types';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   matchCustomerByFBName,
-  addCustomerAlias,
-  createCustomerFromFacebook,
   linkCustomerToFacebook
 } from '../customers/matchCustomer';
 import { findMatchingRelease } from '../releases/matchRelease';
@@ -228,10 +226,10 @@ Return ONLY valid JSON:
  */
 async function createRequestFromState(
   ctx: Context,
-  data: ConversationState['data']
+  data: ConversationState['data'] & { isNewCustomer?: boolean }
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const { analysis, customer, images, matchedReleases } = data;
+  const { analysis, customer, images, matchedReleases, isNewCustomer } = data;
 
   if (!analysis || !customer) {
     await ctx.reply('Missing data to create request.');
@@ -344,13 +342,21 @@ async function createRequestFromState(
       return line;
     }).join('\n');
 
-    await ctx.reply(
-      `✅ Request created with ${analysis.items.length} item(s)!\n\n` +
-      `Customer: ${customer.name}\n` +
-      `Items:\n${itemsList}\n\n` +
-      `View in CRM: ${baseUrl}/admin/requests/${request.id}`,
-      { parse_mode: 'HTML' }
-    );
+    // Build success message
+    const customerLabel = isNewCustomer
+      ? `👤 Customer: ${customer.name} (new customer)`
+      : `👤 Customer: ${customer.name}`;
+
+    let successMessage = `✅ Request created with ${analysis.items.length} item(s)!\n\n` +
+      `${customerLabel}\n` +
+      `📦 Items:\n${itemsList}\n\n` +
+      `🔗 View: ${baseUrl}/admin/requests/${request.id}`;
+
+    if (isNewCustomer) {
+      successMessage += `\n\n💡 Tip: Add email/phone in customer profile later`;
+    }
+
+    await ctx.reply(successMessage, { parse_mode: 'HTML' });
 
     log.info('Request created from Telegram', {
       requestId: request.id,
@@ -631,17 +637,56 @@ export function createTelegramBot(): Telegraf {
     }
 
     if (data === 'new_customer' && state?.data?.analysis) {
-      conversationState.set(ctx.from.id, {
-        step: 'enter_customer_email',
-        data: {
-          ...state.data,
-          customerName: state.data.analysis.customerName
+      // Create customer immediately with just the name (no email prompt)
+      const customerName = state.data.analysis.customerName;
+      const supabase = getSupabaseAdmin();
+
+      try {
+        // Create customer with name only
+        const { data: newCustomer, error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            name: customerName,
+            facebook_name: customerName,
+            email: null,
+          })
+          .select()
+          .single();
+
+        if (customerError || !newCustomer) {
+          await ctx.reply('Failed to create customer. Please try again.');
+          conversationState.delete(ctx.from.id);
+          await ctx.answerCbQuery();
+          return;
         }
-      });
-      await ctx.reply(
-        `Creating new customer: ${state.data.analysis.customerName}\n\n` +
-        `Enter their email address (or type "skip" to skip):`
-      );
+
+        // Add alias for future matching
+        await supabase.from('customer_aliases').insert({
+          customer_id: newCustomer.id,
+          alias_type: 'facebook',
+          alias_value: customerName.toLowerCase().trim()
+        }).catch(() => {
+          // Ignore alias errors - not critical
+        });
+
+        // Update state with new customer and create request
+        state.data.customer = {
+          id: newCustomer.id,
+          name: newCustomer.name,
+          email: null,
+          facebook_name: customerName
+        };
+
+        // Mark as new customer for success message
+        (state.data as { isNewCustomer?: boolean }).isNewCustomer = true;
+
+        await createRequestFromState(ctx, state.data);
+        conversationState.delete(ctx.from.id);
+      } catch (error) {
+        log.error('Error creating new customer', error);
+        await ctx.reply('Failed to create customer. Please try again.');
+        conversationState.delete(ctx.from.id);
+      }
     }
 
     if (data === 'change_customer' && state?.data) {
@@ -721,27 +766,6 @@ export function createTelegramBot(): Telegraf {
         conversationState.delete(ctx.from.id);
         return;
       }
-    }
-
-    // Handle email entry for new customer
-    if (state.step === 'enter_customer_email') {
-      const email = text.toLowerCase() === 'skip' ? null : text;
-
-      // Create new customer
-      const newCustomer = await createCustomerFromFacebook(
-        state.data.customerName!,
-        email
-      );
-
-      if (newCustomer) {
-        state.data.customer = newCustomer;
-        await createRequestFromState(ctx, state.data);
-      } else {
-        await ctx.reply('Failed to create customer. Please try again.');
-      }
-
-      conversationState.delete(ctx.from.id);
-      return;
     }
 
     // Handle customer name search
