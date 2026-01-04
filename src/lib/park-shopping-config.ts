@@ -6,11 +6,13 @@ export interface ParkConfig {
   dbValue: string;
   name: string;
   emoji: string;
+  logo: string;
 }
 
 export interface ResortConfig {
   name: string;
   emoji: string;
+  logo: string;
   parks: ParkConfig[];
 }
 
@@ -18,29 +20,32 @@ export const RESORTS: Record<string, ResortConfig> = {
   disney: {
     name: 'Walt Disney World',
     emoji: '🏰',
+    logo: '/images/parks/disney-world.svg',
     parks: [
-      { id: 'magic-kingdom', dbValue: 'disney_mk', name: 'Magic Kingdom', emoji: '🏰' },
-      { id: 'epcot', dbValue: 'disney_epcot', name: 'EPCOT', emoji: '🌍' },
-      { id: 'hollywood-studios', dbValue: 'disney_hs', name: 'Hollywood Studios', emoji: '🎬' },
-      { id: 'animal-kingdom', dbValue: 'disney_ak', name: 'Animal Kingdom', emoji: '🦁' },
-      { id: 'disney-springs', dbValue: 'disney_springs', name: 'Disney Springs', emoji: '🛍️' },
+      { id: 'magic-kingdom', dbValue: 'disney_mk', name: 'Magic Kingdom', emoji: '🏰', logo: '/images/parks/magic-kingdom.svg' },
+      { id: 'epcot', dbValue: 'disney_epcot', name: 'EPCOT', emoji: '🌍', logo: '/images/parks/epcot.svg' },
+      { id: 'hollywood-studios', dbValue: 'disney_hs', name: 'Hollywood Studios', emoji: '🎬', logo: '/images/parks/hollywood-studios.svg' },
+      { id: 'animal-kingdom', dbValue: 'disney_ak', name: 'Animal Kingdom', emoji: '🦁', logo: '/images/parks/animal-kingdom.svg' },
+      { id: 'disney-springs', dbValue: 'disney_springs', name: 'Disney Springs', emoji: '🛍️', logo: '/images/parks/disney-springs.svg' },
     ],
   },
   universal: {
     name: 'Universal Orlando',
     emoji: '🎢',
+    logo: '/images/parks/universal-orlando.svg',
     parks: [
-      { id: 'usf', dbValue: 'universal_usf', name: 'Universal Studios', emoji: '🎬' },
-      { id: 'ioa', dbValue: 'universal_ioa', name: 'Islands of Adventure', emoji: '🦖' },
-      { id: 'citywalk', dbValue: 'universal_citywalk', name: 'CityWalk', emoji: '🎵' },
-      { id: 'epic-universe', dbValue: 'universal_epic', name: 'Epic Universe', emoji: '🌟' },
+      { id: 'usf', dbValue: 'universal_usf', name: 'Universal Studios', emoji: '🎬', logo: '/images/parks/universal-studios.svg' },
+      { id: 'ioa', dbValue: 'universal_ioa', name: 'Islands of Adventure', emoji: '🦖', logo: '/images/parks/islands-of-adventure.svg' },
+      { id: 'citywalk', dbValue: 'universal_citywalk', name: 'CityWalk', emoji: '🎵', logo: '/images/parks/citywalk.svg' },
+      { id: 'epic-universe', dbValue: 'universal_epic', name: 'Epic Universe', emoji: '🌟', logo: '/images/parks/universal-orlando.svg' },
     ],
   },
   seaworld: {
     name: 'SeaWorld Orlando',
     emoji: '🐬',
+    logo: '/images/parks/seaworld.svg',
     parks: [
-      { id: 'seaworld', dbValue: 'seaworld', name: 'SeaWorld', emoji: '🐬' },
+      { id: 'seaworld', dbValue: 'seaworld', name: 'SeaWorld', emoji: '🐬', logo: '/images/parks/seaworld.svg' },
     ],
   },
 };

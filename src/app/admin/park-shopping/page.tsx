@@ -70,7 +70,21 @@ export default function ParkShoppingPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <span className="text-4xl">{resort.emoji}</span>
+                      <div className="w-16 h-12 flex items-center justify-center flex-shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={resort.logo}
+                          alt={resort.name}
+                          className="max-w-full max-h-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            if (e.currentTarget.nextElementSibling) {
+                              (e.currentTarget.nextElementSibling as HTMLElement).classList.remove('hidden');
+                            }
+                          }}
+                        />
+                        <span className="text-4xl hidden">{resort.emoji}</span>
+                      </div>
                       <div>
                         <h2 className="text-xl font-semibold text-foreground">
                           {resort.name}

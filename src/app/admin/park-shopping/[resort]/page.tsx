@@ -83,7 +83,21 @@ export default function ResortParkSelectorPage() {
           <ChevronLeft className="w-6 h-6" />
         </Button>
         <div className="flex items-center gap-3">
-          <span className="text-3xl">{resortConfig.emoji}</span>
+          <div className="h-10 flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={resortConfig.logo}
+              alt={resortConfig.name}
+              className="h-full object-contain"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                if (e.currentTarget.nextElementSibling) {
+                  (e.currentTarget.nextElementSibling as HTMLElement).classList.remove('hidden');
+                }
+              }}
+            />
+            <span className="text-3xl hidden">{resortConfig.emoji}</span>
+          </div>
           <div>
             <h1 className="text-xl font-heading font-bold text-foreground">
               {resortConfig.name}
@@ -114,7 +128,21 @@ export default function ResortParkSelectorPage() {
             >
               <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
                 <CardContent className="p-4 flex flex-col items-center text-center">
-                  <span className="text-4xl mb-2">{park.emoji}</span>
+                  <div className="w-full h-12 mb-2 flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={park.logo}
+                      alt={park.name}
+                      className="max-w-full max-h-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        if (e.currentTarget.nextElementSibling) {
+                          (e.currentTarget.nextElementSibling as HTMLElement).classList.remove('hidden');
+                        }
+                      }}
+                    />
+                    <span className="text-4xl hidden">{park.emoji}</span>
+                  </div>
                   <h3 className="font-semibold text-foreground text-sm leading-tight">
                     {park.name}
                   </h3>

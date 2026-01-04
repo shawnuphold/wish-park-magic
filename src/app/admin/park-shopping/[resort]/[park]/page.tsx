@@ -337,7 +337,21 @@ export default function ParkRequestsPage() {
             <ChevronLeft className="w-6 h-6" />
           </Button>
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{parkConfig.emoji}</span>
+            <div className="h-10 flex items-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={parkConfig.logo}
+                alt={parkConfig.name}
+                className="h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextElementSibling) {
+                    (e.currentTarget.nextElementSibling as HTMLElement).classList.remove('hidden');
+                  }
+                }}
+              />
+              <span className="text-2xl hidden">{parkConfig.emoji}</span>
+            </div>
             <div>
               <h1 className="text-xl font-heading font-bold text-foreground">
                 {parkConfig.name}
