@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/api-auth';
 import { getPresignedReadUrl, S3_BUCKET, S3_REGION } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
+import { smartFetch } from '@/lib/scraper/proxyFetch';
 
 const log = createLogger('ImageProxy');
 
@@ -90,11 +91,8 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; EnchantedParkPickups/1.0)',
-        },
-      });
+      // Use smartFetch which routes blocked domains through ScraperAPI
+      const response = await smartFetch(url);
 
       if (!response.ok) {
         return NextResponse.json({ error: 'Failed to fetch image' }, { status: 500 });
