@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, MapPin } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { ShoppingItemCard, type ShoppingItem } from './ShoppingItemCard';
 
 interface StoreSectionProps {
@@ -27,55 +26,57 @@ export function StoreSection({
   const notFoundCount = items.filter(i => i.status === 'not_found').length;
 
   return (
-    <div className="border rounded-xl overflow-hidden bg-card">
-      {/* Store Header */}
+    <div className="relative">
+      {/* Store Header - Sticky within section */}
       <button
-        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-muted/50 transition-colors"
+        className="sticky top-[140px] z-[5] w-full px-4 py-3 flex items-center gap-3 text-left bg-background/95 backdrop-blur border-b transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         {/* Expand/Collapse Icon */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
           {expanded ? (
-            <ChevronDown className="w-5 h-5 text-muted-foreground" />
+            <ChevronDown className="w-5 h-5 text-gray-600" />
           ) : (
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            <ChevronRight className="w-5 h-5 text-gray-600" />
           )}
         </div>
 
         {/* Store Icon */}
-        <MapPin className="w-4 h-4 text-gold flex-shrink-0" />
+        <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+          <MapPin className="w-4 h-4 text-amber-600" />
+        </div>
 
         {/* Store Name and Land */}
         <div className="flex-1 min-w-0">
-          <div className="font-medium truncate">{storeName}</div>
+          <div className="font-semibold text-base truncate">{storeName}</div>
           {landName && (
-            <div className="text-xs text-muted-foreground truncate">{landName}</div>
+            <div className="text-sm text-gray-500 truncate">{landName}</div>
           )}
         </div>
 
-        {/* Status Badges */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {pendingCount > 0 && (
-            <Badge variant="secondary" className="text-xs px-1.5 py-0">
-              {pendingCount}
-            </Badge>
-          )}
-          {foundCount > 0 && (
-            <Badge className="bg-green-100 text-green-700 text-xs px-1.5 py-0">
-              {foundCount}
-            </Badge>
-          )}
-          {notFoundCount > 0 && (
-            <Badge className="bg-red-100 text-red-700 text-xs px-1.5 py-0">
-              {notFoundCount}
-            </Badge>
-          )}
+        {/* Item Count */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-sm font-medium text-gray-600">
+            {items.length} {items.length === 1 ? 'item' : 'items'}
+          </span>
+          {/* Status indicators */}
+          <div className="flex items-center gap-1">
+            {pendingCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-amber-400" title={`${pendingCount} pending`} />
+            )}
+            {foundCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-green-500" title={`${foundCount} found`} />
+            )}
+            {notFoundCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-red-400" title={`${notFoundCount} not found`} />
+            )}
+          </div>
         </div>
       </button>
 
       {/* Items */}
       {expanded && (
-        <div className="px-3 pb-3 space-y-3">
+        <div className="px-4 py-4 space-y-4 bg-gray-50">
           {items.map(item => (
             <ShoppingItemCard
               key={item.id}

@@ -34,6 +34,18 @@ const PARK_NAMES: Record<string, string> = {
   seaworld: 'SeaWorld',
 };
 
+const PARK_ICONS: Record<string, string> = {
+  disney_mk: '🏰',
+  disney_epcot: '🌍',
+  disney_hs: '🎬',
+  disney_ak: '🦁',
+  disney_springs: '🛍️',
+  universal_usf: '🎢',
+  universal_ioa: '🏝️',
+  universal_citywalk: '🎵',
+  seaworld: '🐬',
+};
+
 // All parks in each parent group (for "Also at" badges)
 const SIBLING_PARKS: Record<string, string[]> = {
   disney: ['disney_mk', 'disney_epcot', 'disney_hs', 'disney_ak', 'disney_springs'],
@@ -171,6 +183,7 @@ export async function GET(
       park: {
         code: park,
         name: PARK_NAMES[park],
+        icon: PARK_ICONS[park] || '📍',
         parent,
       },
       stores,

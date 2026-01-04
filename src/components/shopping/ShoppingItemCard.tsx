@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { Check, X, MapPin, ImageIcon, Undo2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Check, X, MapPin, ImageIcon, Undo2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MarkFoundForm } from './MarkFoundForm';
 import { ImageViewer } from './ImageViewer';
@@ -90,110 +89,124 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
     }
   };
 
-  // Format date
-  const requestDate = new Date(item.created_at).toLocaleDateString('en-US', {
-    month: 'numeric',
-    day: 'numeric',
-  });
+  // Get the display image (found image for found items, reference for others)
+  const displayImage = isFound && item.found_image_url ? item.found_image_url : item.reference_image_url;
+
+  // Build details string
+  const details: string[] = [];
+  if (item.size) details.push(`Size: ${item.size}`);
+  if ((item.quantity || 1) > 1) details.push(`Qty: ${item.quantity}`);
+  if (item.color) details.push(item.color);
+  if (item.variant) details.push(item.variant);
 
   return (
     <div className={`
-      rounded-xl border bg-card overflow-hidden
-      ${isFound ? 'border-green-200 bg-green-50/50' : ''}
-      ${isNotFound ? 'border-red-200 bg-red-50/50 opacity-75' : ''}
+      rounded-2xl overflow-hidden shadow-md
+      ${isFound ? 'ring-2 ring-green-400 bg-green-50' : 'bg-white'}
+      ${isNotFound ? 'opacity-60 bg-gray-50' : ''}
     `}>
+      {/* BIG IMAGE - Takes ~60% of card */}
+      <div
+        className="relative w-full bg-gray-100 cursor-pointer"
+        style={{ aspectRatio: '4/3' }}
+        onClick={() => displayImage && setShowImageViewer(true)}
+      >
+        {displayImage ? (
+          <Image
+            src={displayImage}
+            alt={item.name}
+            fill
+            className="object-contain"
+            sizes="(max-width: 768px) 100vw, 400px"
+            priority
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+            <ImageIcon className="w-16 h-16 mb-2" />
+            <span className="text-sm">No image</span>
+          </div>
+        )}
+
+        {/* Status overlay for found/not found */}
+        {isFound && (
+          <div className="absolute top-3 left-3 bg-green-500 text-white px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5">
+            <Check className="w-4 h-4" />
+            Found
+          </div>
+        )}
+        {isNotFound && (
+          <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5">
+            <X className="w-4 h-4" />
+            {item.not_found_reason === 'out_of_stock' ? 'Out of Stock' :
+             item.not_found_reason === 'discontinued' ? 'Discontinued' : 'Not Found'}
+          </div>
+        )}
+
+        {/* Multi-park badge */}
+        {item.alsoAt && item.alsoAt.length > 0 && isPending && (
+          <div className="absolute bottom-3 left-3 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-medium">
+            Also at {item.alsoAt.length} other {item.alsoAt.length === 1 ? 'park' : 'parks'}
+          </div>
+        )}
+      </div>
+
+      {/* Info Section */}
       <div className="p-4">
-        {/* Image and Info Row */}
-        <div className="flex gap-3">
-          {/* Image */}
-          <div
-            className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-muted cursor-pointer"
-            onClick={() => item.reference_image_url && setShowImageViewer(true)}
-          >
-            {item.reference_image_url ? (
-              <Image
-                src={item.reference_image_url}
-                alt={item.name}
-                fill
-                className="object-cover"
-                sizes="80px"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <ImageIcon className="w-8 h-8 text-muted-foreground/30" />
-              </div>
-            )}
-          </div>
+        {/* Item Name */}
+        <h3 className="text-lg font-semibold leading-tight mb-2">
+          {item.name}
+        </h3>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-base leading-tight line-clamp-2">
-              {item.name}
-            </h3>
+        {/* Details Row */}
+        {details.length > 0 && (
+          <p className="text-base text-gray-600 mb-2">
+            {details.join('  •  ')}
+          </p>
+        )}
 
-            {/* Size / Qty / Color */}
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-sm text-muted-foreground mt-1">
-              {item.size && <span>Size: {item.size}</span>}
-              {(item.quantity || 1) > 1 && (
-                <span>Qty: {item.quantity}</span>
-              )}
-              {item.color && <span>{item.color}</span>}
-              {item.variant && <span>{item.variant}</span>}
-            </div>
-
-            {/* Customer and Date */}
-            <div className="text-sm text-muted-foreground mt-1">
-              {item.customerName} &bull; {requestDate}
-            </div>
-
-            {/* Multi-park badge */}
-            {item.alsoAt && item.alsoAt.length > 0 && (
-              <div className="flex items-center gap-1 mt-1.5 text-xs text-blue-600">
-                <MapPin className="w-3 h-3" />
-                <span>Also at: {item.alsoAt.slice(0, 2).join(', ')}</span>
-                {item.alsoAt.length > 2 && <span>+{item.alsoAt.length - 2}</span>}
-              </div>
-            )}
-          </div>
+        {/* Customer */}
+        <div className="flex items-center gap-1.5 text-gray-500 mb-1">
+          <User className="w-4 h-4" />
+          <span className="text-sm">{item.customerName}</span>
         </div>
+
+        {/* Store location */}
+        {item.store_name && (
+          <div className="flex items-center gap-1.5 text-gray-500">
+            <MapPin className="w-4 h-4" />
+            <span className="text-sm">{item.store_name}</span>
+          </div>
+        )}
 
         {/* Customer Notes */}
         {item.customer_notes && (
-          <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm">
             <span className="font-medium">Note:</span> {item.customer_notes}
           </div>
         )}
 
         {/* Notes from general notes field */}
         {item.notes && !item.customer_notes && (
-          <div className="mt-3 p-2 bg-muted rounded-lg text-sm text-muted-foreground">
+          <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm text-gray-600">
             {item.notes}
           </div>
         )}
 
-        {/* Status badges for completed items */}
+        {/* Found state - show price and reset */}
         {isFound && (
-          <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Badge className="bg-green-100 text-green-700 border-green-200">
-                <Check className="w-3 h-3 mr-1" />
-                Found
-              </Badge>
-              {item.actual_price && (
-                <span className="text-sm font-medium text-green-700">
-                  ${item.actual_price.toFixed(2)}
-                </span>
-              )}
-              {item.quantity_found && item.quantity_found < (item.quantity || 1) && (
-                <span className="text-xs text-muted-foreground">
-                  ({item.quantity_found} of {item.quantity})
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-lg font-bold text-green-600">
+              ${item.actual_price?.toFixed(2)}
+              {(item.quantity || 1) > 1 && (
+                <span className="text-sm font-normal text-gray-500 ml-1">
+                  each ({item.quantity_found || item.quantity} of {item.quantity})
                 </span>
               )}
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 text-muted-foreground hover:text-foreground"
+              className="text-gray-500 hover:text-gray-700"
               onClick={handleReset}
               disabled={resetting}
             >
@@ -203,17 +216,13 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
           </div>
         )}
 
+        {/* Not found state - show reset */}
         {isNotFound && (
-          <div className="mt-3 flex items-center justify-between">
-            <Badge className="bg-red-100 text-red-700 border-red-200">
-              <X className="w-3 h-3 mr-1" />
-              {item.not_found_reason === 'out_of_stock' ? 'Out of Stock' :
-               item.not_found_reason === 'discontinued' ? 'Discontinued' : 'Not Found'}
-            </Badge>
+          <div className="mt-4 flex justify-end">
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 text-muted-foreground hover:text-foreground"
+              className="text-gray-500 hover:text-gray-700"
               onClick={handleReset}
               disabled={resetting}
             >
@@ -225,10 +234,9 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
 
         {/* Action Buttons - Only for pending items */}
         {isPending && !showFoundForm && !showNotFoundOptions && (
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-3 mt-4">
             <Button
-              variant="default"
-              className="flex-1 h-12 bg-green-600 hover:bg-green-700"
+              className="flex-1 min-h-[56px] text-base font-semibold rounded-xl bg-green-500 hover:bg-green-600"
               onClick={() => setShowFoundForm(true)}
             >
               <Check className="w-5 h-5 mr-2" />
@@ -236,11 +244,11 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
             </Button>
             <Button
               variant="outline"
-              className="flex-1 h-12 border-red-200 text-red-600 hover:bg-red-50"
+              className="flex-1 min-h-[56px] text-base font-semibold rounded-xl border-2 border-gray-200 text-gray-600 hover:bg-gray-100"
               onClick={() => setShowNotFoundOptions(true)}
             >
               <X className="w-5 h-5 mr-2" />
-              Not Found
+              Not Here
             </Button>
           </div>
         )}
@@ -259,13 +267,12 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
 
         {/* Not Found Options */}
         {showNotFoundOptions && (
-          <div className="mt-4 space-y-2">
-            <p className="text-sm font-medium mb-2">Why not found?</p>
+          <div className="mt-4 space-y-3">
+            <p className="text-base font-medium">Why not found?</p>
             <div className="grid grid-cols-3 gap-2">
               <Button
                 variant="outline"
-                size="sm"
-                className="h-10"
+                className="h-12 text-sm"
                 disabled={markingNotFound}
                 onClick={() => handleNotFound('out_of_stock')}
               >
@@ -273,17 +280,15 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
               </Button>
               <Button
                 variant="outline"
-                size="sm"
-                className="h-10"
+                className="h-12 text-sm"
                 disabled={markingNotFound}
                 onClick={() => handleNotFound('cant_find')}
               >
-                Can't Find
+                Can&apos;t Find
               </Button>
               <Button
                 variant="outline"
-                size="sm"
-                className="h-10"
+                className="h-12 text-sm"
                 disabled={markingNotFound}
                 onClick={() => handleNotFound('discontinued')}
               >
@@ -292,8 +297,7 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
             </div>
             <Button
               variant="ghost"
-              size="sm"
-              className="w-full"
+              className="w-full h-10"
               onClick={() => setShowNotFoundOptions(false)}
             >
               Cancel
@@ -303,9 +307,9 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
       </div>
 
       {/* Image Viewer Modal */}
-      {showImageViewer && item.reference_image_url && (
+      {showImageViewer && displayImage && (
         <ImageViewer
-          src={item.reference_image_url}
+          src={displayImage}
           alt={item.name}
           onClose={() => setShowImageViewer(false)}
         />
