@@ -64,15 +64,21 @@ export async function analyzeScreenshot(imageBase64: string): Promise<ImageAnaly
    - 'product_photo' = Just a product image (no social media UI)
    - 'other' = Something else
 
-2. EMBEDDED PRODUCT IMAGES: If this is a screenshot, locate any product images within it.
-   For each product image found, provide the bounding box as percentages of the total image:
+2. EMBEDDED PRODUCT IMAGES: If this is a screenshot, locate EACH INDIVIDUAL product image.
+   IMPORTANT: Create a SEPARATE bounding box for EACH product, even if they appear close together.
+
+   For EACH product image found, provide the bounding box as percentages:
    - x: distance from left edge (0-100%)
    - y: distance from top edge (0-100%)
    - width: width of the region (0-100%)
    - height: height of the region (0-100%)
 
-   Be PRECISE - these coordinates will be used to crop the image.
-   Look for actual product photos embedded in the conversation (not just icons or profile pics).
+   RULES:
+   - ONE product per bounding box (never combine multiple products)
+   - Be PRECISE - these coordinates will be used to crop the image
+   - Only include actual product photos (not icons, profile pics, or UI elements)
+   - If products are stacked vertically, create separate boxes for each
+   - Add a few pixels of padding around each product
 
 3. CUSTOMER NAME: If visible in the screenshot (e.g., at top of Messenger chat), extract it.
 
@@ -83,21 +89,23 @@ Return JSON only, no other text:
   "customerName": "Nicole Bishop",
   "productRegions": [
     {
-      "description": "Pink spirit jersey on hanger",
-      "boundingBox": { "x": 10, "y": 25, "width": 80, "height": 35 },
+      "description": "Pink spirit jersey",
+      "boundingBox": { "x": 10, "y": 20, "width": 80, "height": 25 },
       "isProduct": true
     },
     {
       "description": "Gray sherpa fleece jacket",
-      "boundingBox": { "x": 10, "y": 65, "width": 80, "height": 30 },
+      "boundingBox": { "x": 10, "y": 50, "width": 80, "height": 25 },
       "isProduct": true
     }
   ]
 }
 
-Important:
-- Only include regions that contain actual product photos (merchandise, clothing, etc.)
-- Be accurate with bounding boxes - err on the side of including a bit of padding
+CRITICAL RULES:
+- Create ONE entry per product (NEVER combine "Pink jersey and gray fleece" into one entry)
+- Each productRegion should contain exactly ONE product
+- If you see 2 products, return 2 separate productRegions with different bounding boxes
+- Be accurate with bounding boxes - include a few pixels of padding
 - If there are no product images, return empty productRegions array`
           }
         ]

@@ -20,7 +20,7 @@ import {
 } from '../customers/matchCustomer';
 import { findMatchingRelease } from '../releases/matchRelease';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { uploadBufferToFolder } from '@/lib/s3';
+import { uploadBufferToFolder, uploadBufferForExternalAccess } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
 import { lookupProduct } from '@/lib/ai/productLookup';
 import { analyzeImage, extractParkContext, type VisionAnalysisResult } from '@/lib/ai/googleVision';
@@ -492,11 +492,11 @@ export function createTelegramBot(): Telegraf {
         await ctx.reply('Not a customer message. Running product identification...');
 
         try {
-          // Upload image to S3 first so SerpApi can access it via public URL
+          // Upload image to S3 with presigned URL so SerpApi can access it
           const imageBuffer = Buffer.from(images[0].base64, 'base64');
           log.info('Uploading image to S3 for product lookup...');
-          const s3Url = await uploadBufferToFolder(imageBuffer, 'temp-lookup', 'image/jpeg');
-          log.info('Image uploaded to S3', { s3Url });
+          const s3Url = await uploadBufferForExternalAccess(imageBuffer, 'temp-lookup', 'image/jpeg');
+          log.info('Image uploaded to S3 with presigned URL');
 
           // Run product lookup with both base64 (for Claude) and URL (for SerpApi)
           const imageBase64 = `data:image/jpeg;base64,${images[0].base64}`;
@@ -588,9 +588,9 @@ export function createTelegramBot(): Telegraf {
             // Crop the product image from the screenshot
             const croppedBuffer = await cropImageRegion(imageBuffer, region.boundingBox);
 
-            // Upload cropped image to S3 for Google Lens
-            const croppedS3Url = await uploadBufferToFolder(croppedBuffer, 'temp-lookup', 'image/jpeg');
-            log.info('Uploaded cropped product image', { regionIndex: regionIdx, url: croppedS3Url });
+            // Upload cropped image to S3 with presigned URL for Google Lens access
+            const croppedS3Url = await uploadBufferForExternalAccess(croppedBuffer, 'temp-lookup', 'image/jpeg');
+            log.info('Uploaded cropped product image with presigned URL', { regionIndex: regionIdx });
 
             // Run Google Lens on the cropped product image
             const lensResult = await searchGoogleLens(croppedS3Url);

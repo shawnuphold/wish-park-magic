@@ -92,3 +92,33 @@ export async function uploadBufferToFolder(
 
   return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
 }
+
+/**
+ * Upload a buffer to S3 and return a presigned read URL
+ * Use this for external services like Google Lens that need accessible URLs
+ */
+export async function uploadBufferForExternalAccess(
+  buffer: Buffer,
+  folder: ImageFolder,
+  contentType: string = 'image/jpeg'
+): Promise<string> {
+  const extension = contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg');
+  const fileName = `${uuidv4()}.${extension}`;
+  const key = `${folder}/${fileName}`;
+
+  // Upload the file
+  await s3Client.send(new PutObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  }));
+
+  // Return a presigned URL that external services can access (1 hour expiry)
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+  });
+
+  return getSignedUrl(s3Client, command, { expiresIn: 3600 });
+}
