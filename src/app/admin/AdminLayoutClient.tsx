@@ -26,6 +26,7 @@ import {
   Wrench,
   Download,
   MapPin,
+  Search,
 } from 'lucide-react';
 import { InstallBanner } from '@/components/InstallBanner';
 import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
@@ -39,6 +40,7 @@ const navigation = [
   { name: 'Invoices', href: '/admin/invoices', icon: FileText },
   { name: 'Shipments', href: '/admin/shipments', icon: Package },
   { name: 'Shipping Quote', href: '/admin/shipping-quote', icon: Calculator },
+  { name: 'Product Lookup', href: '/admin/tools/product-lookup', icon: Search },
   { name: 'Tools', href: '/admin/tools', icon: Wrench },
   { name: 'New Releases', href: '/admin/releases', icon: Sparkles },
   { name: 'Inventory', href: '/admin/inventory', icon: ShoppingBag },
