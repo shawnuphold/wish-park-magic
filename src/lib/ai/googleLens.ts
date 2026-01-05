@@ -332,6 +332,8 @@ export function findDisneyMatch(matches: LensMatch[]): LensMatch | null {
  * Find Disney blog article URL from Lens results
  * Prioritizes high-quality Disney news sources over product listings
  * Returns null if no suitable article found
+ *
+ * IMPORTANT: Only returns actual article URLs, not homepages or category pages
  */
 export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
   if (matches.length === 0) return null;
@@ -351,13 +353,37 @@ export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
     'insidethemagic.net'
   ];
 
-  // Find first match from a Disney blog
+  // Find first match from a Disney blog that looks like an article URL
   for (const match of matches) {
     const link = match.link || '';
+
     for (const domain of disneyBlogs) {
       if (link.includes(domain)) {
-        console.log(`[Lens] Found Disney article: ${link}`);
-        return link;
+        // Check if this looks like an actual article URL (not homepage/category)
+        // Article URLs typically have year patterns like /2024/ or /2025/
+        // or paths like /news/, /article/, /merchandise/
+        const isArticleUrl =
+          /\/20\d\d\//.test(link) ||  // Year pattern like /2024/ or /2025/
+          link.includes('/news/') ||
+          link.includes('/article/') ||
+          link.includes('/merchandise/') ||
+          link.includes('/photos-') ||
+          link.includes('/review-') ||
+          link.includes('/first-look-') ||
+          link.includes('/new-') ||
+          // Most blog URLs have 4+ path segments for articles
+          (link.split('/').filter(s => s.length > 0).length >= 4);
+
+        // Skip if it's just the homepage or a very short URL
+        const isHomepage = link.replace(/\/$/, '').endsWith(domain) ||
+          link.split('/').filter(s => s.length > 0).length <= 2;
+
+        if (isArticleUrl && !isHomepage) {
+          console.log(`[Lens] Found Disney article: ${link}`);
+          return link;
+        } else {
+          console.log(`[Lens] Skipping non-article URL: ${link}`);
+        }
       }
     }
   }
