@@ -25,6 +25,8 @@ import { createLogger } from '@/lib/logger';
 import { lookupProduct } from '@/lib/ai/productLookup';
 import { analyzeImage, extractParkContext, type VisionAnalysisResult } from '@/lib/ai/googleVision';
 import { searchGoogleLens, findDisneyMatch, extractProductName } from '@/lib/ai/googleLens';
+import { analyzeScreenshot } from '@/lib/ai/detectImageType';
+import { cropImageRegion } from '@/lib/images/cropImage';
 
 const log = createLogger('TelegramBot');
 
@@ -552,63 +554,100 @@ export function createTelegramBot(): Telegraf {
         imageCount: images.length
       });
 
-      // First, upload images to S3 for Google Lens lookups
-      const s3Urls: string[] = [];
-      for (const img of images) {
-        try {
-          const buffer = Buffer.from(img.base64, 'base64');
-          const url = await uploadBufferToFolder(buffer, 'temp-lookup', 'image/jpeg');
-          s3Urls.push(url);
-        } catch (error) {
-          log.error('Failed to upload image for Lens lookup', error);
-          s3Urls.push('');
-        }
-      }
-
-      // Try Google Lens for each item to get accurate product names
+      // Detect product regions in the screenshot and run Google Lens on each
       const matchedReleases = new Map<number, MatchedRelease>();
-      for (let i = 0; i < analysis.items.length; i++) {
-        const item = analysis.items[i];
-        const imageIndex = item.imageIndex ?? i;
-        const s3Url = s3Urls[imageIndex] || s3Urls[0];
 
-        let productName = item.productName; // Start with Claude's extraction
-        let lensPrice: number | null = null;
-        let lensSource: string | null = null;
+      // Step 1: Analyze the screenshot to find embedded product images
+      log.info('Detecting product regions in screenshot...');
+      const imageAnalysis = await analyzeScreenshot(images[0].base64);
+      log.info('Screenshot analysis', {
+        type: imageAnalysis.type,
+        hasEmbeddedImages: imageAnalysis.hasEmbeddedImages,
+        productRegions: imageAnalysis.productRegions.length
+      });
 
-        // Try Google Lens first for accurate product identification
-        if (s3Url) {
+      // Map to store Lens results for each item by matching to regions
+      const lensResultsByItem = new Map<number, { name: string; price: number | null; source: string }>();
+
+      // Step 2: If we found product regions, crop and search each one
+      if (imageAnalysis.productRegions.length > 0) {
+        const imageBuffer = Buffer.from(images[0].base64, 'base64');
+
+        for (let regionIdx = 0; regionIdx < imageAnalysis.productRegions.length; regionIdx++) {
+          const region = imageAnalysis.productRegions[regionIdx];
+
+          if (!region.isProduct) continue;
+
+          log.info('Processing product region', {
+            regionIndex: regionIdx,
+            description: region.description,
+            boundingBox: region.boundingBox
+          });
+
           try {
-            log.info('Running Google Lens for item', {
-              itemIndex: i,
-              claudeName: item.productName,
-              imageUrl: s3Url
-            });
+            // Crop the product image from the screenshot
+            const croppedBuffer = await cropImageRegion(imageBuffer, region.boundingBox);
 
-            const lensResult = await searchGoogleLens(s3Url);
+            // Upload cropped image to S3 for Google Lens
+            const croppedS3Url = await uploadBufferToFolder(croppedBuffer, 'temp-lookup', 'image/jpeg');
+            log.info('Uploaded cropped product image', { regionIndex: regionIdx, url: croppedS3Url });
+
+            // Run Google Lens on the cropped product image
+            const lensResult = await searchGoogleLens(croppedS3Url);
 
             if (lensResult.success && lensResult.visualMatches.length > 0) {
               const match = findDisneyMatch(lensResult.visualMatches);
               if (match) {
                 const lensName = extractProductName(match);
-                log.info('Google Lens found product', {
-                  claudeName: item.productName,
+                log.info('Google Lens found product from cropped region', {
+                  regionIndex: regionIdx,
+                  regionDescription: region.description,
                   lensName,
                   source: match.source,
                   price: match.price?.value
                 });
 
-                // Use Lens name instead of Claude's generic extraction
-                productName = lensName;
-                lensPrice = match.price?.extracted_value || null;
-                lensSource = match.source;
+                // Store result - will match to item by index or description
+                lensResultsByItem.set(regionIdx, {
+                  name: lensName,
+                  price: match.price?.extracted_value || null,
+                  source: match.source
+                });
               }
-            } else if (lensResult.error) {
-              log.warn('Google Lens error', { error: lensResult.error });
+            } else {
+              log.info('No Lens matches for cropped region', {
+                regionIndex: regionIdx,
+                error: lensResult.error
+              });
             }
           } catch (error) {
-            log.error('Google Lens lookup failed', error);
+            log.error('Error processing product region', { regionIndex: regionIdx, error });
           }
+        }
+      } else {
+        // No regions detected - fall back to uploading whole image (less accurate)
+        log.info('No product regions detected, skipping Lens (would search whole screenshot)');
+      }
+
+      // Step 3: Match items to Lens results and local database
+      for (let i = 0; i < analysis.items.length; i++) {
+        const item = analysis.items[i];
+        let productName = item.productName; // Start with Claude's extraction
+        let lensPrice: number | null = null;
+        let lensSource: string | null = null;
+
+        // Try to get Lens result for this item
+        // Match by index (assuming items and regions are in same order)
+        const lensResult = lensResultsByItem.get(i);
+        if (lensResult) {
+          log.info('Using Lens result for item', {
+            itemIndex: i,
+            claudeName: item.productName,
+            lensName: lensResult.name
+          });
+          productName = lensResult.name;
+          lensPrice = lensResult.price;
+          lensSource = lensResult.source;
         }
 
         // Now try to match against local database with the (potentially corrected) name
