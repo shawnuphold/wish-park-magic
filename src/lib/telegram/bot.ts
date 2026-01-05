@@ -548,26 +548,31 @@ export function createTelegramBot(): Telegraf {
       if (lensResult.success && lensResult.visualMatches.length > 0) {
         log.info(`Lens found ${lensResult.visualMatches.length} matches`);
 
+        // Get best Lens match title as hint for article extraction
+        const bestMatch = findDisneyMatch(lensResult.visualMatches);
+        const lensHint = bestMatch?.title || lensResult.visualMatches[0]?.title || undefined;
+        log.info(`Lens hint: ${lensHint}`);
+
         const articleUrls = findAllDisneyArticleUrls(lensResult.visualMatches);
 
         if (articleUrls.length > 0) {
           log.info(`Found ${articleUrls.length} Disney article URLs`);
 
-          const articleResult = await extractProductFromArticle(articleUrls[0]);
+          // Pass Lens match title as hint to help identify correct product in multi-product articles
+          const articleResult = await extractProductFromArticle(articleUrls[0], lensHint);
           if (articleResult.success && articleResult.product) {
             productName = articleResult.product.productName;
             price = articleResult.product.price || null;
             store = articleResult.product.location || null;
             log.info(`Extracted from article: ${productName}`);
           }
-        } else {
-          // No article, try to use best Lens match title
-          const bestMatch = findDisneyMatch(lensResult.visualMatches);
-          if (bestMatch) {
-            productName = extractProductName(bestMatch);
-            price = bestMatch.price?.extracted_value || null;
-            log.info(`Using Lens match: ${productName}`);
-          }
+        }
+
+        // If no article or extraction failed, use Lens match directly
+        if (productName === 'Unknown product' && bestMatch) {
+          productName = extractProductName(bestMatch);
+          price = bestMatch.price?.extracted_value || null;
+          log.info(`Using Lens match: ${productName}`);
         }
       }
 
@@ -684,19 +689,24 @@ export function createTelegramBot(): Telegraf {
           let price: number | null = null;
 
           if (lensResult.success && lensResult.visualMatches.length > 0) {
+            // Get best Lens match title as hint for article extraction
+            const bestMatch = findDisneyMatch(lensResult.visualMatches);
+            const lensHint = bestMatch?.title || lensResult.visualMatches[0]?.title || undefined;
+
             const articleUrls = findAllDisneyArticleUrls(lensResult.visualMatches);
             if (articleUrls.length > 0) {
-              const articleResult = await extractProductFromArticle(articleUrls[0]);
+              // Pass Lens match title as hint to identify correct product
+              const articleResult = await extractProductFromArticle(articleUrls[0], lensHint);
               if (articleResult.success && articleResult.product) {
                 productName = articleResult.product.productName;
                 price = articleResult.product.price || null;
               }
-            } else {
-              const bestMatch = findDisneyMatch(lensResult.visualMatches);
-              if (bestMatch) {
-                productName = extractProductName(bestMatch);
-                price = bestMatch.price?.extracted_value || null;
-              }
+            }
+
+            // If no article or extraction failed, use Lens match directly
+            if (productName === 'Unknown product' && bestMatch) {
+              productName = extractProductName(bestMatch);
+              price = bestMatch.price?.extracted_value || null;
             }
           }
 

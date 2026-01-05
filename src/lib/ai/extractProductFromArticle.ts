@@ -29,9 +29,17 @@ export interface ArticleExtractionResult {
 
 /**
  * Fetch article HTML and extract product information using Claude
+ * @param articleUrl - URL of the Disney blog article
+ * @param productHint - Optional hint from Lens match (e.g. "Disney Parks 2025 WDW Sherpa Zip Up Jacket")
  */
-export async function extractProductFromArticle(articleUrl: string): Promise<ArticleExtractionResult> {
+export async function extractProductFromArticle(
+  articleUrl: string,
+  productHint?: string
+): Promise<ArticleExtractionResult> {
   console.log(`[ArticleExtract] Fetching article: ${articleUrl}`);
+  if (productHint) {
+    console.log(`[ArticleExtract] Product hint: ${productHint}`);
+  }
 
   try {
     // Fetch article HTML via ScraperAPI (for blocked domains)
@@ -42,13 +50,32 @@ export async function extractProductFromArticle(articleUrl: string): Promise<Art
     const textContent = extractTextFromHtml(html);
     console.log(`[ArticleExtract] Extracted ${textContent.length} chars of text`);
 
-    // Use Claude to extract product info
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{
-        role: 'user',
-        content: `Extract product information from this Disney blog article. The article is about a Disney park product (merchandise, spirit jersey, ears, etc.).
+    // Build prompt - with or without product hint
+    const prompt = productHint
+      ? `Extract product information from this Disney merchandise article.
+
+We're specifically looking for a product matching: "${productHint}"
+
+ARTICLE TEXT:
+${textContent.substring(0, 10000)}
+
+Find the product that best matches "${productHint}" and return as JSON only:
+{
+  "productName": "Full product name as it would appear on a price tag",
+  "price": 69.99,
+  "location": "Store or park location where available",
+  "category": "spirit_jersey|popcorn_bucket|ears|apparel|other",
+  "description": "Brief description of the product"
+}
+
+RULES:
+- Find the product matching the hint (look for keywords: sherpa, fleece, puffer, jacket, etc.)
+- productName should be the official product name from the article
+- price should be a number (no $ symbol)
+- category must be one of: spirit_jersey, popcorn_bucket, ears, apparel, other
+- If info is not found, omit that field
+- Return ONLY valid JSON, no other text`
+      : `Extract product information from this Disney blog article. The article is about a Disney park product (merchandise, spirit jersey, ears, etc.).
 
 ARTICLE TEXT:
 ${textContent.substring(0, 8000)}
@@ -58,7 +85,7 @@ Extract the following information and return as JSON only:
   "productName": "Full product name as it would appear on a price tag",
   "price": 69.99,
   "location": "Store or park location where available",
-  "category": "spirit_jersey|popcorn_bucket|ears|other",
+  "category": "spirit_jersey|popcorn_bucket|ears|apparel|other",
   "isLimitedEdition": true,
   "releaseDate": "2024-12-15",
   "description": "Brief description of the product"
@@ -67,25 +94,42 @@ Extract the following information and return as JSON only:
 RULES:
 - productName should be the official product name (e.g., "Walt Disney World Spirit Jersey - Pearl Pink")
 - price should be a number (no $ symbol)
-- category must be one of: spirit_jersey, popcorn_bucket, ears, other
+- category must be one of: spirit_jersey, popcorn_bucket, ears, apparel, other
 - If info is not found, omit that field
-- Return ONLY valid JSON, no other text`
-      }]
+- Return ONLY valid JSON, no other text`;
+
+    // Use Claude to extract product info
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
     });
 
     const text = response.content[0].type === 'text' ? response.content[0].text : '';
     console.log('[ArticleExtract] Claude response:', text.substring(0, 300));
 
-    // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    // Strip markdown code blocks if present
+    let jsonStr = text;
+    if (jsonStr.includes('```json')) {
+      jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    } else if (jsonStr.includes('```')) {
+      jsonStr = jsonStr.replace(/```\s*/g, '');
+    }
+
+    // Parse JSON from response - match first complete JSON object
+    const jsonMatch = jsonStr.match(/\{[^{}]*\}/);
     if (jsonMatch) {
-      const product = JSON.parse(jsonMatch[0]) as ExtractedProductInfo;
-      console.log(`[ArticleExtract] Extracted product: ${product.productName}`);
-      return {
-        success: true,
-        product,
-        sourceUrl: articleUrl
-      };
+      try {
+        const product = JSON.parse(jsonMatch[0]) as ExtractedProductInfo;
+        console.log(`[ArticleExtract] Extracted product: ${product.productName}`);
+        return {
+          success: true,
+          product,
+          sourceUrl: articleUrl
+        };
+      } catch (parseError) {
+        console.error('[ArticleExtract] JSON parse error:', parseError, 'Raw:', jsonMatch[0].substring(0, 200));
+      }
     }
 
     console.log('[ArticleExtract] Could not parse JSON from response');
