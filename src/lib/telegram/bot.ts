@@ -413,16 +413,17 @@ async function createRequestFromState(
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://enchantedparkpickups.com';
 
-    // Build items list for display
+    // Build items list for display (matched releases disabled)
     const itemsList = analysis.items.map((item, i) => {
       let line = `  ${i + 1}. ${item.productName}`;
       if (item.size) line += ` (${item.size})`;
       if (item.suggestedStore) line += `\n      📍 ${item.suggestedStore.store_name}`;
-      const matched = matchedReleases?.get(i);
-      if (matched) {
-        line += `\n      🔗 ${matched.title}`;
-        if (matched.price_estimate) line += ` - $${matched.price_estimate}`;
-      }
+      // DISABLED: Don't show matched release - matching is broken
+      // const matched = matchedReleases?.get(i);
+      // if (matched) {
+      //   line += `\n      🔗 ${matched.title}`;
+      //   if (matched.price_estimate) line += ` - $${matched.price_estimate}`;
+      // }
       return line;
     }).join('\n');
 
@@ -564,56 +565,28 @@ export function createTelegramBot(): Telegraf {
         itemCount: analysis.items.length
       });
 
-      // Match items to local database using Claude's extraction
-      for (let i = 0; i < analysis.items.length; i++) {
-        const item = analysis.items[i];
-        const productName = item.productName; // Use Claude's extraction
-
-        log.info('Processing item from Claude extraction', {
-          itemIndex: i,
-          productName,
-          category: item.category
-        });
-
-        // Try to match against local database
-        try {
-          const releaseMatch = await findMatchingRelease(productName, item.category);
-          if (releaseMatch.found && releaseMatch.release) {
-            matchedReleases.set(i, {
-              id: releaseMatch.release.id,
-              title: releaseMatch.release.title,
-              price_estimate: releaseMatch.release.price_estimate,
-              ai_demand_score: releaseMatch.release.ai_demand_score,
-              is_limited_edition: releaseMatch.release.is_limited_edition,
-              confidence: releaseMatch.confidence
-            });
-            log.info('Matched to local release', {
-              itemIndex: i,
-              claudeName: productName,
-              matchedName: releaseMatch.release.title,
-              confidence: releaseMatch.confidence
-            });
-          } else {
-            log.info('No local match for item', { itemIndex: i, productName });
-          }
-        } catch (error) {
-          log.error('Error matching release', { item: productName, error });
-        }
-      }
+      // DISABLED: Release matching is returning wrong products
+      // (e.g., "Disney Spirit Jersey" → "101 Dalmatians Youth Spirit Jersey")
+      // Will be re-enabled when matching algorithm is fixed
+      // For now, just use Claude's extraction directly without matching
+      log.info('Release matching DISABLED - using Claude extraction only', {
+        itemCount: analysis.items.length
+      });
 
       // Try to match customer
       const match = await matchCustomerByFBName(analysis.customerName);
 
-      // Build items list for preview
+      // Build items list for preview (matched releases disabled)
       const itemsList = analysis.items.map((item, i) => {
         let line = `${i + 1}. ${item.productName}`;
         if (item.size) line += ` (${item.size})`;
         if (item.suggestedStore) line += `\n   📍 ${item.suggestedStore.store_name}`;
-        const matched = matchedReleases.get(i);
-        if (matched) {
-          line += `\n   🔗 ${matched.title}`;
-          if (matched.price_estimate) line += ` ($${matched.price_estimate})`;
-        }
+        // DISABLED: Don't show matched release - matching is broken
+        // const matched = matchedReleases.get(i);
+        // if (matched) {
+        //   line += `\n   🔗 ${matched.title}`;
+        //   if (matched.price_estimate) line += ` ($${matched.price_estimate})`;
+        // }
         return line;
       }).join('\n');
 
