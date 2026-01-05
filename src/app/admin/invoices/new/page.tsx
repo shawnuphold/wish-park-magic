@@ -95,6 +95,11 @@ export default function NewInvoicePage() {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [notes, setNotes] = useState('');
 
+  // CC Processing Fee
+  const [ccFeeEnabled, setCcFeeEnabled] = useState(false);
+  const [ccFeePercentage, setCcFeePercentage] = useState(3.0);
+  const [ccFeeManualAmount, setCcFeeManualAmount] = useState<number | null>(null);
+
   // Dialogs
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -184,7 +189,17 @@ export default function NewInvoicePage() {
   const totalPickup = items.reduce((sum, item) => sum + (item.pickup_fee || 0), 0);
   const totalShipping = items.reduce((sum, item) => sum + (item.shipping_fee || 0), 0);
   const totalCustom = items.reduce((sum, item) => sum + (item.custom_fee_amount || 0), 0);
-  const total = subtotal + totalTax + totalPickup + totalShipping + totalCustom;
+
+  // Subtotal before CC fee (used for percentage calculation)
+  const subtotalBeforeCC = subtotal + totalTax + totalPickup + totalShipping + totalCustom;
+
+  // CC Processing Fee calculation
+  const calculatedCcFee = subtotalBeforeCC * (ccFeePercentage / 100);
+  const actualCcFee = ccFeeEnabled
+    ? (ccFeeManualAmount !== null ? ccFeeManualAmount : calculatedCcFee)
+    : 0;
+
+  const total = subtotalBeforeCC + actualCcFee;
 
   // Add new item
   function addItem() {
@@ -257,6 +272,10 @@ export default function NewInvoicePage() {
           subtotal,
           tax_amount: totalTax + totalPickup + totalCustom,
           shipping_amount: totalShipping,
+          cc_fee_enabled: ccFeeEnabled,
+          cc_fee_percentage: ccFeePercentage,
+          cc_fee_manual_amount: ccFeeManualAmount,
+          cc_fee_amount: actualCcFee,
           total,
           status: 'draft',
           notes,
@@ -451,6 +470,62 @@ export default function NewInvoicePage() {
                     <span>${totalCustom.toFixed(2)}</span>
                   </div>
                 )}
+
+                {/* CC Processing Fee */}
+                <div className="border-t pt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="ccFeeEnabled"
+                      checked={ccFeeEnabled}
+                      onChange={(e) => setCcFeeEnabled(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <label htmlFor="ccFeeEnabled" className="text-sm font-medium cursor-pointer">
+                      Add CC Processing Fee
+                    </label>
+                  </div>
+
+                  {ccFeeEnabled && (
+                    <div className="ml-5 space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Percentage:</span>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="10"
+                          value={ccFeePercentage}
+                          onChange={(e) => setCcFeePercentage(parseFloat(e.target.value) || 0)}
+                          className="w-16 h-7 text-sm"
+                        />
+                        <span className="text-muted-foreground">% = ${calculatedCcFee.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Or manual:</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={ccFeeManualAmount ?? ''}
+                          onChange={(e) => setCcFeeManualAmount(e.target.value ? parseFloat(e.target.value) : null)}
+                          placeholder="Use %"
+                          className="w-20 h-7 text-sm"
+                        />
+                      </div>
+                      <div className="flex justify-between font-medium">
+                        <span>CC Fee:</span>
+                        <span>
+                          ${actualCcFee.toFixed(2)}
+                          {ccFeeManualAmount !== null && (
+                            <span className="text-xs text-muted-foreground ml-1">(manual)</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="border-t pt-2">
                   <div className="flex justify-between font-bold text-lg">
                     <span>Total</span>
