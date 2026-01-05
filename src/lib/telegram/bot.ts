@@ -348,13 +348,25 @@ async function createRequestFromState(
       const itemImageUrl = imageUrls[imageIndex] || imageUrls[0] || null;
       const matchedRelease = matchedReleases?.get(i);
 
+      // Use matched release details if available, otherwise fall back to extracted info
+      const itemName = matchedRelease?.title || item.productName;
+      const extractedName = item.productName;
+
+      // Build notes: include size and original request if name was upgraded from match
+      const notesParts: string[] = [];
+      if (item.size) notesParts.push(`Size: ${item.size}`);
+      if (matchedRelease?.title && extractedName !== matchedRelease.title) {
+        notesParts.push(`Customer asked for: ${extractedName}`);
+      }
+      const notes = notesParts.length > 0 ? notesParts.join(' | ') : null;
+
       const itemData: Record<string, unknown> = {
         request_id: request.id,
-        name: item.productName,
+        name: itemName,  // Use matched release name if available
         category: item.category || 'other',
         park: item.park || 'disney',
         quantity: 1,
-        notes: item.size ? `Size: ${item.size}` : null,
+        notes,
         reference_images: itemImageUrl ? [itemImageUrl] : [],
         store_name: item.suggestedStore?.store_name || null,
         land_name: item.suggestedStore?.land || null,
@@ -364,6 +376,11 @@ async function createRequestFromState(
       // Try to include matched_release_id
       if (matchedRelease?.id) {
         itemData.matched_release_id = matchedRelease.id;
+        log.info('Using matched release for item', {
+          extractedName,
+          matchedName: matchedRelease.title,
+          price: matchedRelease.price_estimate
+        });
       }
 
       let { error: itemError } = await supabase
