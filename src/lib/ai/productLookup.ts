@@ -130,13 +130,21 @@ export async function lookupProduct(
 
     // Step 1: Try SerpApi Google Lens (if configured and we have a URL)
     if (settings.provider === 'serpapi' && imageUrl) {
+      console.log('[ProductLookup] Using SerpApi with URL:', imageUrl);
       addStep('searching_lens', 'Searching with Google Lens...');
       const lensResult = await searchGoogleLens(imageUrl);
+
+      console.log('[ProductLookup] Lens result:', {
+        success: lensResult.success,
+        matchCount: lensResult.visualMatches.length,
+        error: lensResult.error
+      });
 
       if (lensResult.success && lensResult.visualMatches.length > 0) {
         lensMatch = findDisneyMatch(lensResult.visualMatches);
         if (lensMatch) {
           const productName = extractProductName(lensMatch);
+          console.log('[ProductLookup] Best Disney match:', productName, 'from', lensMatch.source);
           addStep('searching_lens', `Found: ${productName}`, {
             title: productName,
             source: lensMatch.source,
@@ -152,6 +160,8 @@ export async function lookupProduct(
       } else {
         addStep('searching_lens', 'No visual matches found');
       }
+    } else {
+      console.log('[ProductLookup] Skipping SerpApi:', { provider: settings.provider, hasUrl: !!imageUrl });
     }
 
     // Step 2: Try Google Vision (if lens failed or not primary, and enabled)

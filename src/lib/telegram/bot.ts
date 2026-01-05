@@ -489,9 +489,26 @@ export function createTelegramBot(): Telegraf {
         await ctx.reply('Not a customer message. Running product identification...');
 
         try {
-          // Run product lookup on first image
+          // Upload image to S3 first so SerpApi can access it via public URL
+          const imageBuffer = Buffer.from(images[0].base64, 'base64');
+          log.info('Uploading image to S3 for product lookup...');
+          const s3Url = await uploadBufferToFolder(imageBuffer, 'temp-lookup', 'image/jpeg');
+          log.info('Image uploaded to S3', { s3Url });
+
+          // Run product lookup with both base64 (for Claude) and URL (for SerpApi)
           const imageBase64 = `data:image/jpeg;base64,${images[0].base64}`;
-          const result = await lookupProduct(imageBase64);
+          log.info('Starting product lookup with SerpApi...');
+          const result = await lookupProduct(imageBase64, s3Url);
+
+          log.info('Product lookup complete', {
+            found: !!result.product,
+            sourceType: result.product?.sourceType,
+            confidence: result.confidence,
+            lensMatch: result.lensMatch ? {
+              title: result.lensMatch.title,
+              source: result.lensMatch.source
+            } : null
+          });
 
           if (result.product) {
             const lines = [`🔍 Product Identified:`, `Name: ${result.product.name}`];
@@ -504,6 +521,11 @@ export function createTelegramBot(): Telegraf {
 
             if (result.product.characters.length > 0) {
               lines.push(`Characters: ${result.product.characters.join(', ')}`);
+            }
+
+            // Show source URL if from Google Lens
+            if (result.product.sourceType === 'google_lens' && result.product.sourceUrl) {
+              lines.push(`\nFound on: ${result.product.sourceUrl}`);
             }
 
             await ctx.reply(lines.join('\n'));

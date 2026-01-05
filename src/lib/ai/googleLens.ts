@@ -123,7 +123,8 @@ export async function searchGoogleLens(imageUrl: string): Promise<GoogleLensResu
   }
 
   try {
-    console.log(`[Lens] Searching... (${usage.used + 1}/${usage.limit} this month)`);
+    console.log(`[Lens] Searching with image URL: ${imageUrl}`);
+    console.log(`[Lens] Usage: ${usage.used + 1}/${usage.limit} this month`);
 
     const searchUrl = new URL('https://serpapi.com/search.json');
     searchUrl.searchParams.set('engine', 'google_lens');
@@ -148,6 +149,14 @@ export async function searchGoogleLens(imageUrl: string): Promise<GoogleLensResu
 
     const matches = data.visual_matches || [];
     console.log(`[Lens] Found ${matches.length} visual matches`);
+
+    // Log first few matches for debugging
+    if (matches.length > 0) {
+      console.log('[Lens] Top matches:');
+      matches.slice(0, 3).forEach((m: any, i: number) => {
+        console.log(`  ${i + 1}. ${m.title} (${m.source})`);
+      });
+    }
 
     return {
       visualMatches: matches.map((m: any) => ({

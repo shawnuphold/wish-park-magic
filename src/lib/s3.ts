@@ -13,7 +13,7 @@ const s3Client = new S3Client({
 export const S3_BUCKET = process.env.AWS_S3_BUCKET!;
 export const S3_REGION = process.env.AWS_S3_REGION!;
 
-export type ImageFolder = 'reference-images' | 'found-images' | 'receipts' | 'release-images';
+export type ImageFolder = 'reference-images' | 'found-images' | 'receipts' | 'release-images' | 'temp-lookup';
 
 export async function getPresignedUploadUrl(
   folder: ImageFolder,
