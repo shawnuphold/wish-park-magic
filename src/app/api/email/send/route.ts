@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
           .from('invoices')
           .select(`
             *,
-            request:requests(
+            request:requests!invoices_request_id_fkey(
               customer:customers(name, email),
               items:request_items(name, quantity, actual_price, pickup_fee)
             )

@@ -104,7 +104,7 @@ export default function InvoiceDetailPage() {
         .from('invoices')
         .select(`
           *,
-          request:requests(
+          request:requests!invoices_request_id_fkey(
             id,
             notes,
             customer:customers(name, email, phone),
