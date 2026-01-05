@@ -363,10 +363,14 @@ async function createRequestFromState(
       }
       const notes = notesParts.length > 0 ? notesParts.join(' | ') : null;
 
+      // Validate category - must be one of the allowed values
+      const validCategories = ['spirit_jersey', 'popcorn_bucket', 'ears', 'other'];
+      const category = validCategories.includes(item.category || '') ? item.category : 'other';
+
       const itemData: Record<string, unknown> = {
         request_id: request.id,
         name: itemName,  // Use matched release name if available
-        category: item.category || 'other',
+        category,
         park: item.park || 'disney',
         quantity: 1,
         notes,
@@ -401,8 +405,15 @@ async function createRequestFromState(
       if (itemError) {
         log.error('Failed to create request item',
           new Error(itemError.message || JSON.stringify(itemError)),
-          { item: item.productName, code: itemError.code, details: itemError.details }
+          { item: item.productName, code: itemError.code, details: itemError.details, category, itemData }
         );
+      } else {
+        log.info('Request item created successfully', {
+          itemIndex: i,
+          name: itemName,
+          category,
+          store: item.suggestedStore?.store_name
+        });
       }
     }
 
