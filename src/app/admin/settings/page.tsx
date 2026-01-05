@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Save, DollarSign, Percent, Building, Truck, CreditCard, Tag, Castle, Download, Smartphone, Share } from 'lucide-react';
+import { Loader2, Save, DollarSign, Percent, Building, Truck, CreditCard, Tag, Castle, Download, Smartphone, Share, Search, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
@@ -530,6 +531,31 @@ export default function SettingsPage() {
                 onCheckedChange={(checked) => handleChange('epic_universe_enabled', checked)}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* AI & Product Lookup */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="w-5 h-5" />
+              AI & Product Lookup
+            </CardTitle>
+            <CardDescription>Configure AI-powered product identification services</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href="/admin/settings/product-lookup"
+              className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+            >
+              <div>
+                <div className="font-medium">Product Lookup Settings</div>
+                <p className="text-sm text-muted-foreground">
+                  Configure SerpApi, Google Vision, and Claude AI providers
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </Link>
           </CardContent>
         </Card>
 

@@ -1,16 +1,20 @@
 /**
  * Product Lookup Orchestrator
  *
- * Combines Google Vision, Claude description, local database search,
- * and web search to identify theme park merchandise from images.
+ * Combines SerpApi Google Lens, Google Vision, Claude description,
+ * local database search, and web search to identify theme park merchandise.
  */
 
 import { analyzeImage, extractParkContext, type VisionAnalysisResult } from './googleVision';
 import { describeProduct, type ProductDescription } from './describeProduct';
 import { searchLocalDatabase, type LocalSearchResult } from './searchLocalDatabase';
 import { searchProductArticles, type WebSearchResult } from './searchProductArticles';
+import { searchGoogleLens, findDisneyMatch, extractProductName, type LensMatch } from './googleLens';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export type LookupStep =
+  | 'fetching_settings'
+  | 'searching_lens'
   | 'analyzing_image'
   | 'generating_description'
   | 'searching_database'
@@ -26,6 +30,7 @@ export interface LookupProgress {
 
 export interface ProductLookupResult {
   // Source data
+  lensMatch: LensMatch | null;
   visionAnalysis: VisionAnalysisResult | null;
   productDescription: ProductDescription | null;
 
@@ -47,7 +52,7 @@ export interface ProductLookupResult {
     themes: string[];
     imageUrl: string | null;
     sourceUrl: string | null;
-    sourceType: 'local_database' | 'web_search' | 'ai_generated';
+    sourceType: 'google_lens' | 'local_database' | 'web_search' | 'ai_generated';
   } | null;
 
   // Meta
@@ -58,17 +63,57 @@ export interface ProductLookupResult {
 
 export type ProgressCallback = (progress: LookupProgress) => void;
 
+interface LookupSettings {
+  provider: 'serpapi' | 'google_vision' | 'claude_only';
+  googleVisionEnabled: boolean;
+  claudeFallbackEnabled: boolean;
+}
+
+/**
+ * Fetch product lookup settings from database
+ */
+async function getSettings(): Promise<LookupSettings> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['product_lookup_provider', 'google_vision_enabled', 'claude_fallback_enabled']);
+
+    const settingsMap: Record<string, string> = {};
+    for (const s of settings || []) {
+      settingsMap[s.key] = s.value;
+    }
+
+    return {
+      provider: (settingsMap.product_lookup_provider?.replace(/"/g, '') || 'serpapi') as LookupSettings['provider'],
+      googleVisionEnabled: settingsMap.google_vision_enabled === 'true',
+      claudeFallbackEnabled: settingsMap.claude_fallback_enabled !== 'false'
+    };
+  } catch (error) {
+    console.error('[ProductLookup] Failed to fetch settings:', error);
+    return { provider: 'serpapi', googleVisionEnabled: true, claudeFallbackEnabled: true };
+  }
+}
+
 /**
  * Perform a full product lookup from an image
  *
- * @param imageBase64 - Base64 encoded image
+ * @param imageBase64 - Base64 encoded image (or data URL)
+ * @param imageUrl - Optional public URL of the image (required for SerpApi)
  * @param onProgress - Optional callback for progress updates
  */
 export async function lookupProduct(
   imageBase64: string,
+  imageUrl?: string,
   onProgress?: ProgressCallback
 ): Promise<ProductLookupResult> {
   const steps: LookupProgress[] = [];
+  let lensMatch: LensMatch | null = null;
+  let visionAnalysis: VisionAnalysisResult | null = null;
+  let productDescription: ProductDescription | null = null;
+  let localMatch: LocalSearchResult | null = null;
+  let webResult: WebSearchResult | null = null;
 
   const addStep = (step: LookupStep, message: string, details?: any) => {
     const progress = { step, message, details };
@@ -78,76 +123,119 @@ export async function lookupProduct(
   };
 
   try {
-    // Step 1: Analyze image with Google Vision
-    addStep('analyzing_image', 'Analyzing image with Google Vision...');
-    const visionAnalysis = await analyzeImage(imageBase64);
+    // Step 0: Fetch settings
+    addStep('fetching_settings', 'Loading configuration...');
+    const settings = await getSettings();
+    addStep('fetching_settings', `Provider: ${settings.provider}`);
 
-    if (visionAnalysis.error) {
-      addStep('error', `Vision API error: ${visionAnalysis.error}`);
-    } else {
-      const parkContext = extractParkContext(visionAnalysis);
-      addStep('analyzing_image', 'Image analysis complete', {
-        labels: visionAnalysis.labels.slice(0, 5).map(l => l.description),
-        webEntities: visionAnalysis.webEntities.slice(0, 3).map(e => e.description),
-        detectedPark: parkContext.park,
-        characters: parkContext.characters,
-        productType: parkContext.productType
-      });
-    }
+    // Step 1: Try SerpApi Google Lens (if configured and we have a URL)
+    if (settings.provider === 'serpapi' && imageUrl) {
+      addStep('searching_lens', 'Searching with Google Lens...');
+      const lensResult = await searchGoogleLens(imageUrl);
 
-    // Step 2: Generate detailed description with Claude
-    addStep('generating_description', 'Generating product description...');
-    const productDescription = await describeProduct(imageBase64, visionAnalysis);
-    addStep('generating_description', `Identified: ${productDescription.name}`, {
-      name: productDescription.name,
-      productType: productDescription.productType,
-      characters: productDescription.characters,
-      confidence: productDescription.confidence
-    });
-
-    // Step 3: Search local database
-    addStep('searching_database', 'Searching local database...');
-    const localSearch = await searchLocalDatabase(productDescription, visionAnalysis);
-
-    let localMatch: LocalSearchResult | null = null;
-    if (localSearch.bestMatch) {
-      localMatch = localSearch.bestMatch;
-      addStep('searching_database', `Found local match: ${localMatch.title}`, {
-        title: localMatch.title,
-        confidence: localMatch.confidence,
-        matchReason: localMatch.matchReason
-      });
-    } else if (localSearch.matches.length > 0) {
-      addStep('searching_database', `Found ${localSearch.matches.length} potential matches (low confidence)`);
-    } else {
-      addStep('searching_database', 'No matches in local database');
-    }
-
-    // Step 4: Search web if no good local match
-    let webResult: WebSearchResult | null = null;
-    if (!localMatch || localMatch.confidence < 70) {
-      addStep('searching_web', 'Searching web for product information...');
-      webResult = await searchProductArticles(productDescription);
-
-      if (webResult && webResult.confidence >= 50) {
-        addStep('searching_web', `Found web result: ${webResult.name}`, {
-          name: webResult.name,
-          price: webResult.price,
-          store: webResult.store,
-          sourceUrl: webResult.sourceUrl
-        });
+      if (lensResult.success && lensResult.visualMatches.length > 0) {
+        lensMatch = findDisneyMatch(lensResult.visualMatches);
+        if (lensMatch) {
+          const productName = extractProductName(lensMatch);
+          addStep('searching_lens', `Found: ${productName}`, {
+            title: productName,
+            source: lensMatch.source,
+            price: lensMatch.price?.value,
+            link: lensMatch.link,
+            usage: lensResult.usageInfo
+          });
+        }
+      } else if (lensResult.error === 'Monthly limit reached') {
+        addStep('searching_lens', 'SerpApi limit reached, falling back...', lensResult.usageInfo);
+      } else if (lensResult.error) {
+        addStep('searching_lens', `Lens error: ${lensResult.error}`);
       } else {
-        addStep('searching_web', 'No confident web results found');
+        addStep('searching_lens', 'No visual matches found');
+      }
+    }
+
+    // Step 2: Try Google Vision (if lens failed or not primary, and enabled)
+    const shouldUseVision =
+      (settings.provider === 'google_vision') ||
+      (settings.googleVisionEnabled && !lensMatch);
+
+    if (shouldUseVision) {
+      addStep('analyzing_image', 'Analyzing image with Google Vision...');
+      visionAnalysis = await analyzeImage(imageBase64);
+
+      if (visionAnalysis.error) {
+        addStep('analyzing_image', `Vision API error: ${visionAnalysis.error}`);
+      } else {
+        const parkContext = extractParkContext(visionAnalysis);
+        addStep('analyzing_image', 'Image analysis complete', {
+          labels: visionAnalysis.labels.slice(0, 5).map(l => l.description),
+          webEntities: visionAnalysis.webEntities.slice(0, 3).map(e => e.description),
+          detectedPark: parkContext.park,
+          characters: parkContext.characters,
+          productType: parkContext.productType
+        });
+      }
+    }
+
+    // Step 3: Generate description with Claude (if enabled or needed for database search)
+    const shouldUseClaude =
+      settings.claudeFallbackEnabled ||
+      settings.provider === 'claude_only' ||
+      !lensMatch;
+
+    if (shouldUseClaude) {
+      addStep('generating_description', 'Generating product description...');
+      productDescription = await describeProduct(imageBase64, visionAnalysis);
+      addStep('generating_description', `Identified: ${productDescription.name}`, {
+        name: productDescription.name,
+        productType: productDescription.productType,
+        characters: productDescription.characters,
+        confidence: productDescription.confidence
+      });
+
+      // Step 4: Search local database
+      addStep('searching_database', 'Searching local database...');
+      const localSearch = await searchLocalDatabase(productDescription, visionAnalysis);
+
+      if (localSearch.bestMatch) {
+        localMatch = localSearch.bestMatch;
+        addStep('searching_database', `Found local match: ${localMatch.title}`, {
+          title: localMatch.title,
+          confidence: localMatch.confidence,
+          matchReason: localMatch.matchReason
+        });
+      } else if (localSearch.matches.length > 0) {
+        addStep('searching_database', `Found ${localSearch.matches.length} potential matches (low confidence)`);
+      } else {
+        addStep('searching_database', 'No matches in local database');
+      }
+
+      // Step 5: Search web if no good match yet
+      if (!lensMatch && (!localMatch || localMatch.confidence < 70)) {
+        addStep('searching_web', 'Searching web for product information...');
+        webResult = await searchProductArticles(productDescription);
+
+        if (webResult && webResult.confidence >= 50) {
+          addStep('searching_web', `Found web result: ${webResult.name}`, {
+            name: webResult.name,
+            price: webResult.price,
+            store: webResult.store,
+            sourceUrl: webResult.sourceUrl
+          });
+        } else {
+          addStep('searching_web', 'No confident web results found');
+        }
       }
     }
 
     // Compile final result
-    const product = buildFinalProduct(productDescription, localMatch, webResult);
-    const confidence = calculateOverallConfidence(productDescription, localMatch, webResult);
+    const product = buildFinalProduct(lensMatch, productDescription, localMatch, webResult);
+    const confidence = calculateOverallConfidence(lensMatch, productDescription, localMatch, webResult);
 
     addStep('complete', 'Product lookup complete', { confidence });
 
     return {
+      lensMatch,
       visionAnalysis,
       productDescription,
       localMatch,
@@ -163,6 +251,7 @@ export async function lookupProduct(
     addStep('error', errorMessage);
 
     return {
+      lensMatch: null,
       visionAnalysis: null,
       productDescription: null,
       localMatch: null,
@@ -179,41 +268,65 @@ export async function lookupProduct(
  * Build the final product object from all sources
  */
 function buildFinalProduct(
-  description: ProductDescription,
+  lensMatch: LensMatch | null,
+  description: ProductDescription | null,
   localMatch: LocalSearchResult | null,
   webResult: WebSearchResult | null
 ): ProductLookupResult['product'] {
-  // Priority: local database > web search > AI description
-  if (localMatch && localMatch.confidence >= 60) {
+  // Priority: Google Lens > local database > web search > AI description
+
+  // If we have a high-quality lens match, use it
+  if (lensMatch) {
+    const productName = extractProductName(lensMatch);
+    return {
+      name: productName,
+      description: `Found via Google Lens on ${lensMatch.source}`,
+      price: lensMatch.price?.extracted_value || null,
+      park: null,
+      store: null,
+      land: null,
+      category: description?.estimatedCategory || 'merchandise',
+      availability: 'unknown',
+      characters: description?.characters || [],
+      themes: description?.themes || [],
+      imageUrl: lensMatch.thumbnail || null,
+      sourceUrl: lensMatch.link,
+      sourceType: 'google_lens'
+    };
+  }
+
+  // Local database match
+  if (localMatch && localMatch.confidence >= 75) {
     return {
       name: localMatch.title,
-      description: localMatch.description || description.description,
+      description: localMatch.description || description?.description || '',
       price: localMatch.price_estimate,
       park: localMatch.park,
       store: localMatch.store_name,
       land: localMatch.store_area,
       category: localMatch.category,
       availability: 'available',
-      characters: description.characters,
-      themes: description.themes,
+      characters: description?.characters || [],
+      themes: description?.themes || [],
       imageUrl: localMatch.image_url,
       sourceUrl: localMatch.source_url,
       sourceType: 'local_database'
     };
   }
 
+  // Web search result
   if (webResult && webResult.confidence >= 50) {
     return {
       name: webResult.name,
-      description: webResult.description || description.description,
+      description: webResult.description || description?.description || '',
       price: webResult.price,
       park: webResult.park,
       store: webResult.store,
       land: webResult.land,
-      category: description.estimatedCategory,
+      category: description?.estimatedCategory || 'merchandise',
       availability: webResult.availability,
-      characters: description.characters,
-      themes: description.themes,
+      characters: description?.characters || [],
+      themes: description?.themes || [],
       imageUrl: null,
       sourceUrl: webResult.sourceUrl,
       sourceType: 'web_search'
@@ -221,33 +334,47 @@ function buildFinalProduct(
   }
 
   // Fall back to AI-generated description
-  return {
-    name: description.name,
-    description: description.description,
-    price: null,
-    park: description.estimatedPark,
-    store: null,
-    land: null,
-    category: description.estimatedCategory,
-    availability: 'unknown',
-    characters: description.characters,
-    themes: description.themes,
-    imageUrl: null,
-    sourceUrl: null,
-    sourceType: 'ai_generated'
-  };
+  if (description) {
+    return {
+      name: description.name,
+      description: description.description,
+      price: null,
+      park: description.estimatedPark,
+      store: null,
+      land: null,
+      category: description.estimatedCategory,
+      availability: 'unknown',
+      characters: description.characters,
+      themes: description.themes,
+      imageUrl: null,
+      sourceUrl: null,
+      sourceType: 'ai_generated'
+    };
+  }
+
+  // No result available
+  return null;
 }
 
 /**
  * Calculate overall confidence score
  */
 function calculateOverallConfidence(
-  description: ProductDescription,
+  lensMatch: LensMatch | null,
+  description: ProductDescription | null,
   localMatch: LocalSearchResult | null,
   webResult: WebSearchResult | null
 ): number {
+  // Google Lens matches are highly confident
+  if (lensMatch) {
+    // If lens found it on a Disney blog/ShopDisney, very high confidence
+    const trustedSources = ['wdwnt.com', 'blogmickey.com', 'disneyfoodblog.com', 'shopdisney.com'];
+    const isTrusted = trustedSources.some(s => lensMatch.link?.includes(s));
+    return isTrusted ? 95 : 85;
+  }
+
   // Weight the different sources
-  const aiConfidence = description.confidence;
+  const aiConfidence = description?.confidence || 0;
   const localConfidence = localMatch?.confidence || 0;
   const webConfidence = webResult?.confidence || 0;
 
