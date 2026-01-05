@@ -670,13 +670,11 @@ export function createTelegramBot(): Telegraf {
           return;
         }
 
-        // Add alias for future matching
+        // Add alias for future matching (ignore errors - not critical)
         await supabase.from('customer_aliases').insert({
           customer_id: newCustomer.id,
           alias_type: 'facebook',
           alias_value: customerName.toLowerCase().trim()
-        }).catch(() => {
-          // Ignore alias errors - not critical
         });
 
         // Update state with new customer and create request
