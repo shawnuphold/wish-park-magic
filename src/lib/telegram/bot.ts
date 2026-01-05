@@ -294,7 +294,7 @@ async function createRequestFromState(
         park: item.park || 'disney',
         quantity: 1,
         notes: item.size ? `Size: ${item.size}` : null,
-        reference_images: itemImageUrl ? [itemImageUrl] : [],
+        reference_image_url: itemImageUrl || null,
         store_name: item.suggestedStore?.store_name || null,
         land_name: item.suggestedStore?.land || null,
         estimated_price: matchedRelease?.price_estimate || null
@@ -318,7 +318,10 @@ async function createRequestFromState(
       }
 
       if (itemError) {
-        log.error('Failed to create request item', { item: item.productName, error: itemError });
+        log.error('Failed to create request item',
+          new Error(itemError.message || JSON.stringify(itemError)),
+          { item: item.productName, code: itemError.code, details: itemError.details }
+        );
       }
     }
 
