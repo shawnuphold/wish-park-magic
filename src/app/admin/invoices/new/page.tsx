@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -24,7 +25,23 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Trash2, Save, Search, User } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ArrowLeft, Plus, Trash2, Save, Search, User, Pencil, ChevronDown, Loader2 } from 'lucide-react';
 
 interface Customer {
   id: string;
@@ -32,11 +49,17 @@ interface Customer {
   email: string;
 }
 
-interface LineItem {
+interface InvoiceItem {
   id: string;
+  name: string;
   description: string;
   quantity: number;
   unit_price: number;
+  tax_amount: number;
+  pickup_fee: number;
+  shipping_fee: number;
+  custom_fee_label: string;
+  custom_fee_amount: number;
 }
 
 interface Request {
@@ -47,7 +70,17 @@ interface Request {
   customer: Customer;
 }
 
-const TAX_RATE = 0.065; // Florida 6.5%
+const defaultItem: Omit<InvoiceItem, 'id'> = {
+  name: '',
+  description: '',
+  quantity: 1,
+  unit_price: 0,
+  tax_amount: 0,
+  pickup_fee: 0,
+  shipping_fee: 0,
+  custom_fee_label: '',
+  custom_fee_amount: 0,
+};
 
 export default function NewInvoicePage() {
   const router = useRouter();
@@ -59,14 +92,18 @@ export default function NewInvoicePage() {
   // Invoice data
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
-  const [lineItems, setLineItems] = useState<LineItem[]>([
-    { id: '1', description: '', quantity: 1, unit_price: 0 },
-  ]);
+  const [items, setItems] = useState<InvoiceItem[]>([]);
   const [shippingAmount, setShippingAmount] = useState(0);
   const [notes, setNotes] = useState('');
 
-  // Customer selection dialog
+  // Dialogs
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [editingItem, setEditingItem] = useState<InvoiceItem | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [newItem, setNewItem] = useState<Omit<InvoiceItem, 'id'>>(defaultItem);
 
   useEffect(() => {
     loadCustomers();
@@ -77,6 +114,13 @@ export default function NewInvoicePage() {
       loadCustomerRequests(selectedCustomer.id);
     }
   }, [selectedCustomer]);
+
+  // Load request items when a request is selected
+  useEffect(() => {
+    if (selectedRequest) {
+      loadRequestItems(selectedRequest.id);
+    }
+  }, [selectedRequest]);
 
   async function loadCustomers() {
     const { data } = await supabase
@@ -103,34 +147,92 @@ export default function NewInvoicePage() {
     }
   }
 
-  function addLineItem() {
-    setLineItems([
-      ...lineItems,
-      { id: Date.now().toString(), description: '', quantity: 1, unit_price: 0 },
-    ]);
-  }
+  async function loadRequestItems(requestId: string) {
+    const { data } = await supabase
+      .from('request_items')
+      .select('*')
+      .eq('request_id', requestId);
 
-  function removeLineItem(id: string) {
-    if (lineItems.length > 1) {
-      setLineItems(lineItems.filter((item) => item.id !== id));
+    if (data && data.length > 0) {
+      const invoiceItems: InvoiceItem[] = data.map(item => ({
+        id: `temp-${item.id}`,
+        name: item.name,
+        description: '',
+        quantity: item.quantity || 1,
+        unit_price: item.actual_price || item.estimated_price || 0,
+        tax_amount: 0,
+        pickup_fee: item.pickup_fee || 0,
+        shipping_fee: 0,
+        custom_fee_label: '',
+        custom_fee_amount: 0,
+      }));
+      setItems(invoiceItems);
     }
   }
 
-  function updateLineItem(id: string, field: keyof LineItem, value: string | number) {
-    setLineItems(
-      lineItems.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
-      )
-    );
-  }
+  // Calculate item total
+  const calculateItemTotal = (item: InvoiceItem) => {
+    return (item.unit_price * item.quantity) +
+      item.tax_amount +
+      item.pickup_fee +
+      item.shipping_fee +
+      (item.custom_fee_amount || 0);
+  };
 
   // Calculate totals
-  const subtotal = lineItems.reduce(
-    (sum, item) => sum + item.quantity * item.unit_price,
-    0
+  const subtotal = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+  const totalFees = items.reduce((sum, item) =>
+    sum + item.tax_amount + item.pickup_fee + item.shipping_fee + (item.custom_fee_amount || 0), 0
   );
-  const taxAmount = subtotal * TAX_RATE;
-  const total = subtotal + taxAmount + shippingAmount;
+  const total = subtotal + totalFees + shippingAmount;
+
+  // Add new item
+  function addItem() {
+    if (!newItem.name) return;
+    const item: InvoiceItem = {
+      ...newItem,
+      id: `temp-${Date.now()}`,
+    };
+    setItems([...items, item]);
+    setNewItem(defaultItem);
+    setShowAddDialog(false);
+  }
+
+  // Update item
+  function updateItem() {
+    if (!editingItem) return;
+    setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
+    setEditingItem(null);
+    setShowEditDialog(false);
+  }
+
+  // Delete item
+  function deleteItem() {
+    if (!deletingItemId) return;
+    setItems(items.filter(i => i.id !== deletingItemId));
+    setDeletingItemId(null);
+    setShowDeleteDialog(false);
+  }
+
+  // Add fee to item
+  function addFeeToItem(itemId: string, feeType: 'tax' | 'pickup' | 'shipping' | 'custom') {
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    if (feeType === 'custom') {
+      const label = prompt('Enter custom fee label:');
+      if (!label) return;
+      const amount = parseFloat(prompt('Enter amount:') || '0');
+      if (isNaN(amount)) return;
+
+      setItems(items.map(i =>
+        i.id === itemId ? { ...i, custom_fee_label: label, custom_fee_amount: amount } : i
+      ));
+    } else {
+      setEditingItem(item);
+      setShowEditDialog(true);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -139,8 +241,8 @@ export default function NewInvoicePage() {
       return;
     }
 
-    if (lineItems.every((item) => !item.description || item.unit_price === 0)) {
-      alert('Please add at least one line item');
+    if (items.length === 0) {
+      alert('Please add at least one item');
       return;
     }
 
@@ -153,7 +255,7 @@ export default function NewInvoicePage() {
         .insert({
           request_id: selectedRequest?.id || null,
           subtotal,
-          tax_amount: taxAmount,
+          tax_amount: totalFees,
           shipping_amount: shippingAmount,
           total,
           status: 'draft',
@@ -163,6 +265,28 @@ export default function NewInvoicePage() {
         .single();
 
       if (invoiceError) throw invoiceError;
+
+      // Save invoice items
+      const itemsToInsert = items.map(item => ({
+        invoice_id: invoice.id,
+        name: item.name,
+        description: item.description || null,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        tax_amount: item.tax_amount,
+        pickup_fee: item.pickup_fee,
+        shipping_fee: item.shipping_fee,
+        custom_fee_label: item.custom_fee_label || null,
+        custom_fee_amount: item.custom_fee_amount || 0,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('invoice_items')
+        .insert(itemsToInsert);
+
+      if (itemsError) {
+        console.error('Error saving invoice items:', itemsError);
+      }
 
       // If we have a request, update its status
       if (selectedRequest) {
@@ -229,6 +353,7 @@ export default function NewInvoicePage() {
                       setSelectedCustomer(null);
                       setSelectedRequest(null);
                       setRequests([]);
+                      setItems([]);
                     }}
                   >
                     Change
@@ -254,6 +379,7 @@ export default function NewInvoicePage() {
                     onValueChange={(value) => {
                       const request = requests.find((r) => r.id === value);
                       setSelectedRequest(request || null);
+                      if (!request) setItems([]);
                     }}
                   >
                     <SelectTrigger>
@@ -269,7 +395,7 @@ export default function NewInvoicePage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Linking to a request will update its status to "invoiced"
+                    Linking to a request will import its items and update status to "invoiced"
                   </p>
                 </div>
               )}
@@ -284,12 +410,12 @@ export default function NewInvoicePage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Subtotal</span>
+                  <span>Items Subtotal</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>Tax (6.5%)</span>
-                  <span>${taxAmount.toFixed(2)}</span>
+                  <span>Fees (Tax, Pickup, etc.)</span>
+                  <span>${totalFees.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Shipping</span>
@@ -306,15 +432,15 @@ export default function NewInvoicePage() {
           </Card>
         </div>
 
-        {/* Line Items */}
+        {/* Invoice Items */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Line Items</CardTitle>
-                <CardDescription>Add items to the invoice</CardDescription>
+                <CardTitle>Invoice Items</CardTitle>
+                <CardDescription>Add items with per-line fees</CardDescription>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowAddDialog(true)}>
                 <Plus className="w-4 h-4 mr-1" />
                 Add Item
               </Button>
@@ -322,68 +448,126 @@ export default function NewInvoicePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {/* Header */}
-              <div className="grid grid-cols-12 gap-4 text-sm font-medium text-muted-foreground">
-                <div className="col-span-6">Description</div>
-                <div className="col-span-2">Qty</div>
-                <div className="col-span-2">Price</div>
-                <div className="col-span-1 text-right">Total</div>
-                <div className="col-span-1"></div>
+              {/* Table Header */}
+              <div className="hidden md:grid md:grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
+                <div className="col-span-3">Item</div>
+                <div className="col-span-1 text-center">Qty</div>
+                <div className="col-span-1 text-right">Price</div>
+                <div className="col-span-1 text-right">Tax</div>
+                <div className="col-span-1 text-right">Pickup</div>
+                <div className="col-span-1 text-right">Ship</div>
+                <div className="col-span-1 text-right">Custom</div>
+                <div className="col-span-1 text-right">Subtotal</div>
+                <div className="col-span-2 text-right">Actions</div>
               </div>
 
-              {/* Items */}
-              {lineItems.map((item, index) => (
-                <div key={item.id} className="grid grid-cols-12 gap-4 items-center">
-                  <div className="col-span-6">
-                    <Input
-                      placeholder="Item description"
-                      value={item.description}
-                      onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
-                    />
+              {items.map((item) => (
+                <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 py-3 border-b items-center">
+                  <div className="md:col-span-3">
+                    <p className="font-medium">{item.name}</p>
+                    {item.description && (
+                      <p className="text-xs text-muted-foreground">{item.description}</p>
+                    )}
+                    {item.custom_fee_label && (
+                      <p className="text-xs text-blue-600">+ {item.custom_fee_label}</p>
+                    )}
                   </div>
-                  <div className="col-span-2">
-                    <Input
-                      type="number"
-                      min="1"
-                      value={item.quantity}
-                      onChange={(e) =>
-                        updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 1)
-                      }
-                    />
+                  <div className="md:col-span-1 text-center">
+                    <span className="md:hidden text-muted-foreground text-xs">Qty: </span>
+                    {item.quantity}
                   </div>
-                  <div className="col-span-2">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={item.unit_price || ''}
-                      onChange={(e) =>
-                        updateLineItem(item.id, 'unit_price', parseFloat(e.target.value) || 0)
-                      }
-                    />
+                  <div className="md:col-span-1 text-right">
+                    <span className="md:hidden text-muted-foreground text-xs">Price: </span>
+                    ${item.unit_price.toFixed(2)}
                   </div>
-                  <div className="col-span-1 text-right font-medium">
-                    ${(item.quantity * item.unit_price).toFixed(2)}
+                  <div className="md:col-span-1 text-right">
+                    <span className="md:hidden text-muted-foreground text-xs">Tax: </span>
+                    {item.tax_amount > 0 ? `$${item.tax_amount.toFixed(2)}` : '-'}
                   </div>
-                  <div className="col-span-1 text-right">
+                  <div className="md:col-span-1 text-right">
+                    <span className="md:hidden text-muted-foreground text-xs">Pickup: </span>
+                    {item.pickup_fee > 0 ? `$${item.pickup_fee.toFixed(2)}` : '-'}
+                  </div>
+                  <div className="md:col-span-1 text-right">
+                    <span className="md:hidden text-muted-foreground text-xs">Ship: </span>
+                    {item.shipping_fee > 0 ? `$${item.shipping_fee.toFixed(2)}` : '-'}
+                  </div>
+                  <div className="md:col-span-1 text-right">
+                    <span className="md:hidden text-muted-foreground text-xs">Custom: </span>
+                    {item.custom_fee_amount > 0 ? `$${item.custom_fee_amount.toFixed(2)}` : '-'}
+                  </div>
+                  <div className="md:col-span-1 text-right font-medium">
+                    <span className="md:hidden text-muted-foreground text-xs">Subtotal: </span>
+                    ${calculateItemTotal(item).toFixed(2)}
+                  </div>
+                  <div className="md:col-span-2 flex justify-end gap-1">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" variant="ghost" size="sm">
+                          <Plus className="w-3 h-3 mr-1" />
+                          Fee
+                          <ChevronDown className="w-3 h-3 ml-1" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => addFeeToItem(item.id, 'tax')}>
+                          Add Tax
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => addFeeToItem(item.id, 'pickup')}>
+                          Add Pickup Fee
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => addFeeToItem(item.id, 'shipping')}>
+                          Add Shipping Fee
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => addFeeToItem(item.id, 'custom')}>
+                          Add Custom Fee...
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => removeLineItem(item.id)}
-                      disabled={lineItems.length === 1}
+                      onClick={() => {
+                        setEditingItem(item);
+                        setShowEditDialog(true);
+                      }}
                     >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setDeletingItemId(item.id);
+                        setShowDeleteDialog(true);
+                      }}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
               ))}
 
-              {/* Shipping */}
+              {items.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No items yet.{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowAddDialog(true)}
+                    className="text-gold hover:underline"
+                  >
+                    Add an item
+                  </button>
+                </div>
+              )}
+
+              {/* Invoice-level Shipping */}
               <div className="grid grid-cols-12 gap-4 items-center pt-4 border-t">
                 <div className="col-span-6">
-                  <span className="text-sm font-medium">Shipping</span>
+                  <span className="text-sm font-medium">Invoice Shipping</span>
                 </div>
                 <div className="col-span-2"></div>
                 <div className="col-span-2">
@@ -428,8 +612,8 @@ export default function NewInvoicePage() {
               Cancel
             </Button>
           </Link>
-          <Button type="submit" disabled={loading || !selectedCustomer}>
-            <Save className="w-4 h-4 mr-2" />
+          <Button type="submit" disabled={loading || !selectedCustomer || items.length === 0}>
+            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
             {loading ? 'Creating...' : 'Create Invoice'}
           </Button>
         </div>
@@ -485,6 +669,250 @@ export default function NewInvoicePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Add Item Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Item</DialogTitle>
+            <DialogDescription>Add a new item to the invoice</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Name *</Label>
+              <Input
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                placeholder="Item name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Input
+                value={newItem.description}
+                onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Quantity</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={newItem.quantity}
+                  onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Unit Price ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newItem.unit_price || ''}
+                  onChange={(e) => setNewItem({ ...newItem, unit_price: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+            <Separator />
+            <p className="text-sm font-medium">Fees (optional)</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tax ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newItem.tax_amount || ''}
+                  onChange={(e) => setNewItem({ ...newItem, tax_amount: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Pickup Fee ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newItem.pickup_fee || ''}
+                  onChange={(e) => setNewItem({ ...newItem, pickup_fee: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Shipping Fee ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newItem.shipping_fee || ''}
+                  onChange={(e) => setNewItem({ ...newItem, shipping_fee: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Custom Fee ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newItem.custom_fee_amount || ''}
+                  onChange={(e) => setNewItem({ ...newItem, custom_fee_amount: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Custom Fee Label (if amount > 0)</Label>
+              <Input
+                placeholder="e.g., Rush fee, Insurance, etc."
+                value={newItem.custom_fee_label}
+                onChange={(e) => setNewItem({ ...newItem, custom_fee_label: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => {
+              setShowAddDialog(false);
+              setNewItem(defaultItem);
+            }}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={addItem} disabled={!newItem.name}>
+              Add Item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Item Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Item</DialogTitle>
+            <DialogDescription>Update the item details and fees</DialogDescription>
+          </DialogHeader>
+          {editingItem && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  value={editingItem.name}
+                  onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Description (optional)</Label>
+                <Input
+                  value={editingItem.description}
+                  onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Quantity</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={editingItem.quantity}
+                    onChange={(e) => setEditingItem({ ...editingItem, quantity: parseInt(e.target.value) || 1 })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unit Price ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingItem.unit_price}
+                    onChange={(e) => setEditingItem({ ...editingItem, unit_price: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <Separator />
+              <p className="text-sm font-medium">Fees</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Tax ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingItem.tax_amount}
+                    onChange={(e) => setEditingItem({ ...editingItem, tax_amount: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Pickup Fee ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingItem.pickup_fee}
+                    onChange={(e) => setEditingItem({ ...editingItem, pickup_fee: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Shipping Fee ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingItem.shipping_fee}
+                    onChange={(e) => setEditingItem({ ...editingItem, shipping_fee: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Custom Fee ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingItem.custom_fee_amount}
+                    onChange={(e) => setEditingItem({ ...editingItem, custom_fee_amount: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Custom Fee Label (if amount > 0)</Label>
+                <Input
+                  placeholder="e.g., Rush fee, Insurance, etc."
+                  value={editingItem.custom_fee_label}
+                  onChange={(e) => setEditingItem({ ...editingItem, custom_fee_label: e.target.value })}
+                />
+              </div>
+              <div className="bg-muted p-3 rounded-lg">
+                <div className="flex justify-between font-medium">
+                  <span>Line Total</span>
+                  <span>${calculateItemTotal(editingItem).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={updateItem}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Item</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this item? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingItemId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteItem} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
