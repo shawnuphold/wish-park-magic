@@ -133,6 +133,33 @@ export default function RequestsPage() {
     }
   };
 
+  const handleApprove = async (requestId: string) => {
+    try {
+      const { error } = await supabase
+        .from('requests')
+        .update({ status: 'approved', approved_at: new Date().toISOString() })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      setRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: 'approved' as RequestStatus } : r))
+      );
+
+      toast({
+        title: 'Request Approved',
+        description: 'Request is now ready for shopping.',
+      });
+    } catch (error) {
+      console.error('Error approving request:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to approve request.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       pending: 'bg-yellow-500/10 text-yellow-600',
@@ -419,6 +446,17 @@ export default function RequestsPage() {
                                 View Details
                               </Link>
                             </DropdownMenuItem>
+                            {(request.status === 'pending' || request.status === 'quoted') && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleApprove(request.id);
+                                }}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
+                                Approve for Shopping
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
