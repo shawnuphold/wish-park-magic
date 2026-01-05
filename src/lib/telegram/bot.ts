@@ -75,6 +75,34 @@ interface MediaGroupBuffer {
 
 const mediaGroupBuffers = new Map<string, MediaGroupBuffer>();
 
+// Pending request waiting for product images (two-step flow)
+interface PendingItem {
+  description: string;      // From FB screenshot text (Claude extraction)
+  enhancedName?: string;    // From Lens/article extraction
+  price?: number;
+  store?: string;
+  imageUrl?: string;
+  size?: string;
+  category?: string;
+}
+
+interface PendingRequest {
+  customer?: {
+    id: string;
+    name: string;
+    email: string | null;
+    facebook_name: string | null;
+  };
+  customerName: string;
+  items: PendingItem[];
+  notes?: string;
+  waitingForImages: boolean;
+  screenshotBase64?: string;  // Original screenshot for reference
+  createdAt: Date;
+}
+
+const pendingRequests = new Map<number, PendingRequest>();
+
 // Conversation state for multi-step flows
 interface ConversationState {
   step: string;
@@ -489,6 +517,131 @@ export function createTelegramBot(): Telegraf {
   });
 
   /**
+   * Process a product image for a pending request (two-step flow)
+   */
+  async function processProductImageForPending(
+    ctx: Context,
+    imageBase64: string,
+    pending: PendingRequest
+  ): Promise<void> {
+    const chatId = ctx.chat!.id;
+
+    try {
+      await ctx.reply('🔍 Identifying product...');
+
+      const imageBuffer = Buffer.from(imageBase64, 'base64');
+      const s3Url = await uploadBufferForExternalAccess(imageBuffer, 'temp-lookup', 'image/jpeg');
+
+      log.info('Running Lens on product image...');
+      const lensResult = await searchGoogleLens(s3Url);
+
+      let productName = 'Unknown product';
+      let price: number | null = null;
+      let store: string | null = null;
+
+      if (lensResult.success && lensResult.visualMatches.length > 0) {
+        log.info(`Lens found ${lensResult.visualMatches.length} matches`);
+
+        const articleUrls = findAllDisneyArticleUrls(lensResult.visualMatches);
+
+        if (articleUrls.length > 0) {
+          log.info(`Found ${articleUrls.length} Disney article URLs`);
+
+          const articleResult = await extractProductFromArticle(articleUrls[0]);
+          if (articleResult.success && articleResult.product) {
+            productName = articleResult.product.productName;
+            price = articleResult.product.price || null;
+            store = articleResult.product.location || null;
+            log.info(`Extracted from article: ${productName}`);
+          }
+        } else {
+          // No article, try to use best Lens match title
+          const bestMatch = findDisneyMatch(lensResult.visualMatches);
+          if (bestMatch) {
+            productName = extractProductName(bestMatch);
+            price = bestMatch.price?.extracted_value || null;
+            log.info(`Using Lens match: ${productName}`);
+          }
+        }
+      }
+
+      // Find first item without enhanced name and update it
+      const itemIndex = pending.items.findIndex(i => !i.enhancedName);
+      if (itemIndex >= 0) {
+        pending.items[itemIndex].enhancedName = productName;
+        pending.items[itemIndex].price = price || undefined;
+        pending.items[itemIndex].store = store || undefined;
+        pending.items[itemIndex].imageUrl = s3Url;
+      } else {
+        // Add as new item
+        pending.items.push({
+          description: productName,
+          enhancedName: productName,
+          price: price || undefined,
+          store: store || undefined,
+          imageUrl: s3Url
+        });
+      }
+
+      // Check progress
+      const itemsWithImages = pending.items.filter(i => i.enhancedName).length;
+      const totalItems = pending.items.length;
+
+      if (itemsWithImages < totalItems) {
+        await ctx.reply(
+          `✅ Found: ${productName}${price ? ` - $${price}` : ''}\n\n` +
+          `📸 Upload photo ${itemsWithImages + 1} of ${totalItems}, or click "Done" if finished.`,
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '✅ Done - Create request', callback_data: 'done_images' }
+              ]]
+            }
+          }
+        );
+      } else {
+        // All items have images, show final preview
+        await showPendingPreview(ctx, pending);
+      }
+    } catch (error) {
+      log.error('Error processing product image', error);
+      await ctx.reply('Error identifying product. Please try again or click "Done" to proceed.');
+    }
+  }
+
+  /**
+   * Show preview of pending request
+   */
+  async function showPendingPreview(ctx: Context, pending: PendingRequest): Promise<void> {
+    let message = `📋 Request Preview\n\n`;
+    message += `👤 Customer: ${pending.customerName}\n\n`;
+    message += `📦 Items:\n`;
+
+    pending.items.forEach((item, i) => {
+      const name = item.enhancedName || item.description;
+      message += `${i + 1}. ${name}`;
+      if (item.price) message += ` - $${item.price}`;
+      message += '\n';
+      if (item.store) message += `   📍 ${item.store}\n`;
+    });
+
+    if (pending.notes) {
+      message += `\n📝 Notes: ${pending.notes}\n`;
+    }
+
+    message += `\nCreate this request?`;
+
+    await ctx.reply(message, {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '✅ Yes, create request', callback_data: 'create_pending_request' },
+          { text: '❌ Cancel', callback_data: 'cancel_pending' }
+        ]]
+      }
+    });
+  }
+
+  /**
    * Process images after collection (single or media group)
    */
   async function processImages(
@@ -496,342 +649,228 @@ export function createTelegramBot(): Telegraf {
     images: Array<{ base64: string }>,
     caption?: string
   ): Promise<void> {
+    const chatId = ctx.chat!.id;
+
     try {
+      // Check if we have a pending request waiting for product images
+      const pending = pendingRequests.get(chatId);
+      if (pending && pending.waitingForImages) {
+        log.info('Processing as product image for pending request');
+        await processProductImageForPending(ctx, images[0].base64, pending);
+        return;
+      }
+
       // Analyze all images together
       const analysis = await analyzeScreenshots(images, caption);
 
       if (!analysis.isValidRequest || analysis.items.length === 0) {
-        // Not a FB screenshot - try product lookup instead
-        await ctx.reply('Not a customer message. Running product identification...');
+        // Not a FB screenshot - check if this is a product photo
+        // Run Lens to identify and maybe add to pending request
+        await ctx.reply('🔍 Identifying product...');
 
         try {
-          // Upload image to S3 with presigned URL so SerpApi can access it
           const imageBuffer = Buffer.from(images[0].base64, 'base64');
-          log.info('Uploading image to S3 for product lookup...');
           const s3Url = await uploadBufferForExternalAccess(imageBuffer, 'temp-lookup', 'image/jpeg');
-          log.info('Image uploaded to S3 with presigned URL');
 
-          // Run product lookup with both base64 (for Claude) and URL (for SerpApi)
-          const imageBase64 = `data:image/jpeg;base64,${images[0].base64}`;
-          log.info('Starting product lookup with SerpApi...');
-          const result = await lookupProduct(imageBase64, s3Url);
+          const lensResult = await searchGoogleLens(s3Url);
 
-          log.info('Product lookup complete', {
-            found: !!result.product,
-            sourceType: result.product?.sourceType,
-            confidence: result.confidence,
-            lensMatch: result.lensMatch ? {
-              title: result.lensMatch.title,
-              source: result.lensMatch.source
-            } : null
-          });
+          let productName = 'Unknown product';
+          let price: number | null = null;
 
-          if (result.product) {
-            const lines = [`🔍 Product Identified:`, `Name: ${result.product.name}`];
-            if (result.product.price) lines.push(`Price: $${result.product.price}`);
-            if (result.product.park) lines.push(`Park: ${result.product.park}`);
-            if (result.product.store) lines.push(`Store: ${result.product.store}`);
-            if (result.product.land) lines.push(`Land: ${result.product.land}`);
-            lines.push(`Confidence: ${result.confidence}%`);
-            lines.push(`Source: ${result.product.sourceType.replace(/_/g, ' ')}`);
-
-            if (result.product.characters.length > 0) {
-              lines.push(`Characters: ${result.product.characters.join(', ')}`);
+          if (lensResult.success && lensResult.visualMatches.length > 0) {
+            const articleUrls = findAllDisneyArticleUrls(lensResult.visualMatches);
+            if (articleUrls.length > 0) {
+              const articleResult = await extractProductFromArticle(articleUrls[0]);
+              if (articleResult.success && articleResult.product) {
+                productName = articleResult.product.productName;
+                price = articleResult.product.price || null;
+              }
+            } else {
+              const bestMatch = findDisneyMatch(lensResult.visualMatches);
+              if (bestMatch) {
+                productName = extractProductName(bestMatch);
+                price = bestMatch.price?.extracted_value || null;
+              }
             }
+          }
 
-            // Show source URL if from Google Lens
-            if (result.product.sourceType === 'google_lens' && result.product.sourceUrl) {
-              lines.push(`\nFound on: ${result.product.sourceUrl}`);
-            }
-
-            await ctx.reply(lines.join('\n'));
+          if (productName !== 'Unknown product') {
+            await ctx.reply(
+              `🔍 Product Identified:\n${productName}${price ? `\nPrice: $${price}` : ''}\n\n` +
+              `To create a request, please upload a FB/Messenger screenshot showing the customer conversation.`
+            );
           } else {
             await ctx.reply(
               'Could not identify this product.\n' +
-              'Try uploading a clearer photo or a customer screenshot.'
+              'Please upload a FB/Messenger screenshot to create a request.'
             );
           }
         } catch (lookupError) {
           log.error('Product lookup failed', lookupError);
-          await ctx.reply(
-            'Could not identify a product request in this image.\n' +
-            'Please upload a screenshot of a customer requesting an item.'
-          );
+          await ctx.reply('Could not identify product. Please upload a customer screenshot.');
         }
         return;
       }
 
-      log.info('Analysis complete', {
-        customerName: analysis.customerName,
-        itemCount: analysis.items.length,
-        imageCount: images.length
-      });
-
-      const matchedReleases = new Map<number, MatchedRelease>();
-
-      // For FB/Messenger screenshots: Try Lens on FULL screenshot first (cheaper - 1 API call)
-      // This works because Google Lens can identify multiple products from a single screenshot
-      log.info('FB screenshot detected - trying Lens on full screenshot first', {
+      // FB Screenshot detected - Two-step flow
+      log.info('FB screenshot detected - starting two-step flow', {
         customerName: analysis.customerName,
         itemCount: analysis.items.length
       });
 
-      const imageBuffer = Buffer.from(images[0].base64, 'base64');
-
-      // Map to store article-extracted product names by index
-      const articleExtractedNames = new Map<number, { name: string; price: number | null; store: string | null }>();
-
-      // Step 1: Run Lens on FULL screenshot first
-      try {
-        log.info('Uploading full screenshot to S3 for Lens...');
-        const fullScreenshotUrl = await uploadBufferForExternalAccess(imageBuffer, 'temp-lookup', 'image/jpeg');
-        log.info('Running Lens on full screenshot...');
-
-        const fullLensResult = await searchGoogleLens(fullScreenshotUrl);
-
-        if (fullLensResult.success && fullLensResult.visualMatches.length > 0) {
-          log.info(`Lens found ${fullLensResult.visualMatches.length} matches from full screenshot`);
-
-          // Find ALL Disney article URLs (might find multiple products)
-          const articleUrls = findAllDisneyArticleUrls(fullLensResult.visualMatches);
-
-          if (articleUrls.length > 0) {
-            log.info(`Found ${articleUrls.length} Disney article URLs from full screenshot!`);
-
-            // Fetch each article and extract product info
-            for (let urlIdx = 0; urlIdx < articleUrls.length; urlIdx++) {
-              const url = articleUrls[urlIdx];
-              try {
-                log.info(`Fetching article ${urlIdx + 1}/${articleUrls.length}: ${url}`);
-                const articleResult = await extractProductFromArticle(url);
-
-                if (articleResult.success && articleResult.product) {
-                  const extractedName = articleResult.product.productName;
-                  const extractedPrice = articleResult.product.price || null;
-                  const extractedStore = articleResult.product.location || null;
-
-                  log.info(`Article extraction success: ${extractedName}`, {
-                    price: extractedPrice,
-                    store: extractedStore
-                  });
-
-                  // Try to match this extracted name to one of Claude's items
-                  // by checking for word overlap
-                  for (let i = 0; i < analysis.items.length; i++) {
-                    if (articleExtractedNames.has(i)) continue; // Already matched
-
-                    const claudeName = analysis.items[i].productName.toLowerCase();
-                    const articleName = extractedName.toLowerCase();
-
-                    // Check for significant word overlap
-                    const claudeWords = claudeName.split(/\s+/).filter(w => w.length > 3);
-                    const articleWords = articleName.split(/\s+/).filter(w => w.length > 3);
-                    const matchingWords = claudeWords.filter(w => articleWords.some(aw => aw.includes(w) || w.includes(aw)));
-
-                    if (matchingWords.length >= 2 || claudeName.includes('spirit') && articleName.includes('spirit') ||
-                        claudeName.includes('fleece') && articleName.includes('fleece') ||
-                        claudeName.includes('ears') && articleName.includes('ears')) {
-                      articleExtractedNames.set(i, { name: extractedName, price: extractedPrice, store: extractedStore });
-                      log.info(`Matched article product to Claude item ${i + 1}`, {
-                        claudeName: analysis.items[i].productName,
-                        articleName: extractedName,
-                        matchingWords
-                      });
-                      break;
-                    }
-                  }
-
-                  // If no match found, assign to first unmatched item
-                  if (![...articleExtractedNames.values()].some(v => v.name === extractedName)) {
-                    for (let i = 0; i < analysis.items.length; i++) {
-                      if (!articleExtractedNames.has(i)) {
-                        articleExtractedNames.set(i, { name: extractedName, price: extractedPrice, store: extractedStore });
-                        log.info(`Assigned article product to first available slot ${i + 1}`, {
-                          articleName: extractedName
-                        });
-                        break;
-                      }
-                    }
-                  }
-                } else {
-                  log.warn(`Article extraction failed: ${url}`, { error: articleResult.error });
-                }
-              } catch (articleError) {
-                log.error(`Error fetching article: ${url}`, articleError);
-              }
-            }
-          } else {
-            log.info('No Disney article URLs found in full screenshot Lens results');
-          }
-        } else {
-          log.info('No Lens matches from full screenshot', { error: fullLensResult.error });
-        }
-      } catch (lensError) {
-        log.error('Error running Lens on full screenshot', lensError);
-      }
-
-      // Step 2: Apply extracted names to items, or keep Claude's description
-      for (let i = 0; i < analysis.items.length; i++) {
-        const extracted = articleExtractedNames.get(i);
-        if (extracted) {
-          log.info(`Using article-extracted name for item ${i + 1}`, {
-            original: analysis.items[i].productName,
-            enhanced: extracted.name
-          });
-          analysis.items[i].productName = extracted.name;
-        } else {
-          log.info(`No article match for item ${i + 1}, keeping Claude description: ${analysis.items[i].productName}`);
-        }
-
-        // Search local database
-        const productName = analysis.items[i].productName.toLowerCase();
-        log.info('Searching local database for item', { itemIndex: i, productName: analysis.items[i].productName });
-
-        try {
-          const supabase = getSupabaseAdmin();
-
-          // Search for exact or very close title match
-          const { data: releases } = await supabase
-            .from('new_releases')
-            .select('id, title, price_estimate, store_name, ai_demand_score, is_limited_edition')
-            .or(`title.ilike.%${productName}%`)
-            .limit(5);
-
-          if (releases && releases.length > 0) {
-            // Check for high-confidence match
-            for (const release of releases) {
-              const releaseTitle = release.title.toLowerCase();
-
-              // Exact match
-              if (releaseTitle === productName || releaseTitle.includes(productName) || productName.includes(releaseTitle)) {
-                // Check for conflicting keywords (e.g., "Pink" vs "Dalmatians")
-                const itemKeywords = productName.split(/\s+/).filter(w => w.length > 3);
-                const releaseKeywords = releaseTitle.split(/\s+/).filter(w => w.length > 3);
-
-                // Count matching vs conflicting words
-                const matchingWords = itemKeywords.filter(w => releaseKeywords.includes(w));
-                const conflictingWords = releaseKeywords.filter(w => !itemKeywords.includes(w) && w.length > 4);
-
-                // Only accept if more matching than conflicting
-                if (matchingWords.length >= conflictingWords.length && matchingWords.length >= 2) {
-                  const extractedInfo = articleExtractedNames.get(i);
-                  matchedReleases.set(i, {
-                    id: release.id,
-                    title: release.title,
-                    price_estimate: extractedInfo?.price || release.price_estimate,
-                    ai_demand_score: release.ai_demand_score,
-                    is_limited_edition: release.is_limited_edition,
-                    confidence: 95
-                  });
-                  log.info('Found exact local match', {
-                    itemIndex: i,
-                    searchName: analysis.items[i].productName,
-                    matchedName: release.title,
-                    matchingWords,
-                    conflictingWords
-                  });
-                  break;
-                } else {
-                  log.info('Rejected potential match (conflicting keywords)', {
-                    searchName: analysis.items[i].productName,
-                    matchedName: release.title,
-                    matchingWords,
-                    conflictingWords
-                  });
-                }
-              }
-            }
-          }
-
-          if (!matchedReleases.has(i)) {
-            log.info('No local match for item', { itemIndex: i, productName: analysis.items[i].productName });
-          }
-        } catch (error) {
-          log.error('Error searching local database', { item: analysis.items[i].productName, error });
-        }
-      }
-
       // Try to match customer
       const match = await matchCustomerByFBName(analysis.customerName);
 
-      // Build items list for preview
+      // Create pending request
+      const pendingRequest: PendingRequest = {
+        customer: match.found ? match.customer : undefined,
+        customerName: analysis.customerName,
+        items: analysis.items.map(item => ({
+          description: item.productName,
+          size: item.size,
+          category: item.category,
+          store: item.suggestedStore?.store_name
+        })),
+        notes: analysis.notes,
+        waitingForImages: true,
+        screenshotBase64: images[0].base64,
+        createdAt: new Date()
+      };
+
+      pendingRequests.set(chatId, pendingRequest);
+
+      // Build items list
       const itemsList = analysis.items.map((item, i) => {
         let line = `${i + 1}. ${item.productName}`;
         if (item.size) line += ` (${item.size})`;
-        if (item.suggestedStore) line += `\n   📍 ${item.suggestedStore.store_name}`;
-        // Only show matched release if we found a high-confidence local match
-        const matched = matchedReleases.get(i);
-        if (matched && matched.confidence >= 95) {
-          line += `\n   ✅ Found in DB: ${matched.title}`;
-          if (matched.price_estimate) line += ` ($${matched.price_estimate})`;
-        }
         return line;
       }).join('\n');
 
-      if (match.found && match.customer) {
-        // Customer found - confirm and create request
-        conversationState.set(ctx.from!.id, {
-          step: 'confirm_request',
-          data: {
-            analysis,
-            customer: match.customer,
-            images,
-            matchedReleases
-          }
-        });
+      // Ask for product images
+      const customerLine = match.found && match.customer
+        ? `✅ Customer: ${match.customer.name}`
+        : `👤 Customer: ${analysis.customerName} (new)`;
 
-        await ctx.reply(
-          `Found customer: ${match.customer.name}\n` +
-          `(matched on ${match.matchedOn})\n\n` +
-          `Items (${analysis.items.length}):\n${itemsList}\n\n` +
-          `${analysis.notes ? `Notes: ${analysis.notes}\n\n` : ''}` +
-          `Create this request?`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: 'Yes, create request', callback_data: 'create_request' }],
-                [{ text: 'Different customer', callback_data: 'change_customer' }],
-                [{ text: 'Cancel', callback_data: 'cancel' }]
-              ]
-            }
-          }
-        );
-      } else {
-        // Customer not found
-        conversationState.set(ctx.from!.id, {
-          step: 'customer_not_found',
-          data: {
-            analysis,
-            images,
-            suggestions: match.suggestions,
-            matchedReleases
-          }
-        });
-
-        let message = `Customer "${analysis.customerName}" not found.\n\n`;
-        message += `Items (${analysis.items.length}):\n${itemsList}\n\n`;
-
-        if (match.suggestions && match.suggestions.length > 0) {
-          message += `Similar customers:\n`;
-          match.suggestions.forEach((s, i) => {
-            message += `${i + 1}. ${s.name}${s.facebook_name ? ` (FB: ${s.facebook_name})` : ''}\n`;
-          });
-          message += `\nReply with a number to select, or:`;
-        }
-
-        await ctx.reply(message, {
+      await ctx.reply(
+        `${customerLine}\n\n` +
+        `📦 Items mentioned:\n${itemsList}\n\n` +
+        `📸 For better identification, upload a clear photo of each product.\n` +
+        `Or click "Skip" to use these descriptions.`,
+        {
           reply_markup: {
-            inline_keyboard: [
-              [{ text: 'Create new customer', callback_data: 'new_customer' }],
-              [{ text: 'Search by name', callback_data: 'search_customer' }],
-              [{ text: 'Cancel', callback_data: 'cancel' }]
-            ]
+            inline_keyboard: [[
+              { text: '⏭️ Skip - Use descriptions', callback_data: 'skip_images' }
+            ]]
           }
-        });
-      }
+        }
+      );
+
     } catch (error) {
       log.error('Error processing images', error);
-      await ctx.reply('Error processing images. Please try again.');
+      await ctx.reply('Error processing image. Please try again.');
+    }
+  }
+
+  /**
+   * Create request from pending data
+   */
+  async function createRequestFromPending(ctx: Context, pending: PendingRequest): Promise<void> {
+    const supabase = getSupabaseAdmin();
+
+    try {
+      // Get or create customer
+      let customerId: string;
+
+      if (pending.customer) {
+        customerId = pending.customer.id;
+      } else {
+        // Create new customer
+        const timestamp = Date.now();
+        const safeName = pending.customerName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
+        const placeholderEmail = `${safeName}_${timestamp}@placeholder.enchantedparkpickups.com`;
+
+        const { data: newCustomer, error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            name: pending.customerName,
+            facebook_name: pending.customerName,
+            email: placeholderEmail,
+          })
+          .select()
+          .single();
+
+        if (customerError || !newCustomer) {
+          throw new Error(`Failed to create customer: ${customerError?.message}`);
+        }
+
+        customerId = newCustomer.id;
+        log.info('Created new customer', { id: customerId, name: pending.customerName });
+      }
+
+      // Create request
+      const { data: request, error: requestError } = await supabase
+        .from('requests')
+        .insert({
+          customer_id: customerId,
+          status: 'pending',
+          source: 'telegram',
+          notes: pending.notes || null
+        })
+        .select('id')
+        .single();
+
+      if (requestError || !request) {
+        throw new Error(`Failed to create request: ${requestError?.message}`);
+      }
+
+      // Create request items
+      for (const item of pending.items) {
+        const itemName = item.enhancedName || item.description;
+        const validCategories = ['spirit_jersey', 'popcorn_bucket', 'ears', 'other'];
+        const category = validCategories.includes(item.category || '') ? item.category : 'other';
+
+        const { error: itemError } = await supabase
+          .from('request_items')
+          .insert({
+            request_id: request.id,
+            name: itemName,
+            category,
+            park: 'disney',
+            quantity: 1,
+            notes: item.size ? `Size: ${item.size}` : null,
+            reference_images: item.imageUrl ? [item.imageUrl] : [],
+            store_name: item.store || null,
+            estimated_price: item.price || null
+          });
+
+        if (itemError) {
+          log.error('Failed to create request item', itemError);
+        }
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://enchantedparkpickups.com';
+
+      // Build success message
+      const itemsList = pending.items.map((item, i) => {
+        const name = item.enhancedName || item.description;
+        let line = `${i + 1}. ${name}`;
+        if (item.price) line += ` - $${item.price}`;
+        if (item.store) line += `\n   📍 ${item.store}`;
+        return line;
+      }).join('\n');
+
+      await ctx.reply(
+        `✅ Request created!\n\n` +
+        `👤 Customer: ${pending.customerName}\n\n` +
+        `📦 Items:\n${itemsList}\n\n` +
+        `🔗 View: ${baseUrl}/admin/requests/${request.id}`
+      );
+
+      log.info('Request created from pending', { requestId: request.id, itemCount: pending.items.length });
+
+    } catch (error) {
+      log.error('Error creating request from pending', error);
+      await ctx.reply('Failed to create request. Please try again.');
     }
   }
 
@@ -1027,6 +1066,33 @@ export function createTelegramBot(): Telegraf {
     if (data === 'cancel') {
       conversationState.delete(ctx.from.id);
       await ctx.reply('Cancelled.');
+    }
+
+    // Two-step flow callbacks for pending requests
+    const chatId = ctx.chat?.id;
+    const pending = chatId ? pendingRequests.get(chatId) : undefined;
+
+    if (data === 'skip_images' && pending) {
+      // Skip adding product images, show preview with original descriptions
+      pending.waitingForImages = false;
+      await showPendingPreview(ctx, pending);
+    }
+
+    if (data === 'done_images' && pending) {
+      // Done adding images, show preview
+      pending.waitingForImages = false;
+      await showPendingPreview(ctx, pending);
+    }
+
+    if (data === 'create_pending_request' && pending && chatId) {
+      // Create the request from pending data
+      await createRequestFromPending(ctx, pending);
+      pendingRequests.delete(chatId);
+    }
+
+    if (data === 'cancel_pending' && chatId) {
+      pendingRequests.delete(chatId);
+      await ctx.reply('Request cancelled.');
     }
 
     // Handle suggestion selection (callback_data like "select_1", "select_2", etc.)
