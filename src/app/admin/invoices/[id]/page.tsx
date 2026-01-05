@@ -251,8 +251,8 @@ export default function InvoiceDetailPage() {
 
   const calculateInvoiceTotal = () => {
     if (!invoice) return 0;
-    const itemsTotal = invoice.items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
-    return itemsTotal + (invoice.shipping_amount || 0);
+    // Total is sum of all item totals (which include per-line shipping)
+    return invoice.items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
   };
 
   const saveItem = async (item: InvoiceItem | Omit<InvoiceItem, 'id'>, isNew: boolean = false) => {
@@ -1017,18 +1017,36 @@ export default function InvoiceDetailPage() {
                   ${invoice.items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0).toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Total Fees</span>
-                <span>
-                  ${invoice.items.reduce((sum, item) =>
-                    sum + item.tax_amount + item.pickup_fee + item.shipping_fee + (item.custom_fee_amount || 0), 0
-                  ).toFixed(2)}
-                </span>
-              </div>
-              {invoice.shipping_amount > 0 && (
+              {invoice.items.reduce((sum, item) => sum + (item.tax_amount || 0), 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Invoice Shipping</span>
-                  <span>${invoice.shipping_amount.toFixed(2)}</span>
+                  <span className="text-muted-foreground">Tax</span>
+                  <span>
+                    ${invoice.items.reduce((sum, item) => sum + (item.tax_amount || 0), 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {invoice.items.reduce((sum, item) => sum + (item.pickup_fee || 0), 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Pickup Fees</span>
+                  <span>
+                    ${invoice.items.reduce((sum, item) => sum + (item.pickup_fee || 0), 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {invoice.items.reduce((sum, item) => sum + (item.shipping_fee || 0), 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Shipping</span>
+                  <span>
+                    ${invoice.items.reduce((sum, item) => sum + (item.shipping_fee || 0), 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {invoice.items.reduce((sum, item) => sum + (item.custom_fee_amount || 0), 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Custom Fees</span>
+                  <span>
+                    ${invoice.items.reduce((sum, item) => sum + (item.custom_fee_amount || 0), 0).toFixed(2)}
+                  </span>
                 </div>
               )}
               <Separator />

@@ -93,7 +93,6 @@ export default function NewInvoicePage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
-  const [shippingAmount, setShippingAmount] = useState(0);
   const [notes, setNotes] = useState('');
 
   // Dialogs
@@ -179,12 +178,13 @@ export default function NewInvoicePage() {
       (item.custom_fee_amount || 0);
   };
 
-  // Calculate totals
+  // Calculate totals - breakdown by fee type
   const subtotal = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
-  const totalFees = items.reduce((sum, item) =>
-    sum + item.tax_amount + item.pickup_fee + item.shipping_fee + (item.custom_fee_amount || 0), 0
-  );
-  const total = subtotal + totalFees + shippingAmount;
+  const totalTax = items.reduce((sum, item) => sum + (item.tax_amount || 0), 0);
+  const totalPickup = items.reduce((sum, item) => sum + (item.pickup_fee || 0), 0);
+  const totalShipping = items.reduce((sum, item) => sum + (item.shipping_fee || 0), 0);
+  const totalCustom = items.reduce((sum, item) => sum + (item.custom_fee_amount || 0), 0);
+  const total = subtotal + totalTax + totalPickup + totalShipping + totalCustom;
 
   // Add new item
   function addItem() {
@@ -255,8 +255,8 @@ export default function NewInvoicePage() {
         .insert({
           request_id: selectedRequest?.id || null,
           subtotal,
-          tax_amount: totalFees,
-          shipping_amount: shippingAmount,
+          tax_amount: totalTax + totalPickup + totalCustom,
+          shipping_amount: totalShipping,
           total,
           status: 'draft',
           notes,
@@ -371,32 +371,46 @@ export default function NewInvoicePage() {
                 </Button>
               )}
 
-              {selectedCustomer && requests.length > 0 && (
+              {selectedCustomer && (
                 <div className="space-y-2">
-                  <Label>Link to Request (Optional)</Label>
-                  <Select
-                    value={selectedRequest?.id || ''}
-                    onValueChange={(value) => {
-                      const request = requests.find((r) => r.id === value);
-                      setSelectedRequest(request || null);
-                      if (!request) setItems([]);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a request to link..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">No linked request</SelectItem>
-                      {requests.map((request) => (
-                        <SelectItem key={request.id} value={request.id}>
-                          {request.description?.slice(0, 50) || 'Request'} - {request.status}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Linking to a request will import its items and update status to "invoiced"
-                  </p>
+                  <Label>Link to Request (Required)</Label>
+                  {requests.length > 0 ? (
+                    <>
+                      <Select
+                        value={selectedRequest?.id || ''}
+                        onValueChange={(value) => {
+                          const request = requests.find((r) => r.id === value);
+                          setSelectedRequest(request || null);
+                          if (!request) setItems([]);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a request..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {requests.map((request) => (
+                            <SelectItem key={request.id} value={request.id}>
+                              {request.description?.slice(0, 50) || 'Request'} - {request.status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Select a request to create an invoice. Items will be imported automatically.
+                      </p>
+                    </>
+                  ) : (
+                    <div className="p-4 bg-muted rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground">
+                        No open requests found for this customer.
+                      </p>
+                      <Link href="/admin/requests/new">
+                        <Button type="button" variant="link" size="sm" className="mt-2">
+                          Create a new request first
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -413,14 +427,30 @@ export default function NewInvoicePage() {
                   <span>Items Subtotal</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>Fees (Tax, Pickup, etc.)</span>
-                  <span>${totalFees.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Shipping</span>
-                  <span>${shippingAmount.toFixed(2)}</span>
-                </div>
+                {totalTax > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Tax</span>
+                    <span>${totalTax.toFixed(2)}</span>
+                  </div>
+                )}
+                {totalPickup > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Pickup Fees</span>
+                    <span>${totalPickup.toFixed(2)}</span>
+                  </div>
+                )}
+                {totalShipping > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Shipping</span>
+                    <span>${totalShipping.toFixed(2)}</span>
+                  </div>
+                )}
+                {totalCustom > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Custom Fees</span>
+                    <span>${totalCustom.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="border-t pt-2">
                   <div className="flex justify-between font-bold text-lg">
                     <span>Total</span>
@@ -564,27 +594,6 @@ export default function NewInvoicePage() {
                 </div>
               )}
 
-              {/* Invoice-level Shipping */}
-              <div className="grid grid-cols-12 gap-4 items-center pt-4 border-t">
-                <div className="col-span-6">
-                  <span className="text-sm font-medium">Invoice Shipping</span>
-                </div>
-                <div className="col-span-2"></div>
-                <div className="col-span-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={shippingAmount || ''}
-                    onChange={(e) => setShippingAmount(parseFloat(e.target.value) || 0)}
-                  />
-                </div>
-                <div className="col-span-1 text-right font-medium">
-                  ${shippingAmount.toFixed(2)}
-                </div>
-                <div className="col-span-1"></div>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -612,7 +621,7 @@ export default function NewInvoicePage() {
               Cancel
             </Button>
           </Link>
-          <Button type="submit" disabled={loading || !selectedCustomer || items.length === 0}>
+          <Button type="submit" disabled={loading || !selectedCustomer || !selectedRequest || items.length === 0}>
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
             {loading ? 'Creating...' : 'Create Invoice'}
           </Button>
