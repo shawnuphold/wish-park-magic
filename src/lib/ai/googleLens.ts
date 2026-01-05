@@ -355,13 +355,20 @@ export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
 
   // Debug: Log first 10 matches to see what URLs we're getting
   console.log('[Lens] Searching for Disney article URLs in', matches.length, 'matches');
+
+  // Log raw first match to debug structure
+  if (matches.length > 0) {
+    console.log('[Lens] Raw first match structure:', JSON.stringify(matches[0], null, 2));
+  }
+
   console.log('[Lens] First 10 match URLs:');
-  matches.slice(0, 10).forEach((m, i) => {
-    const link = m.link || 'NO LINK';
-    const source = m.source || 'unknown';
+  for (let i = 0; i < Math.min(10, matches.length); i++) {
+    const m = matches[i];
+    const link = m.link || m.source || 'NO_LINK';
+    const source = m.source || m.title?.substring(0, 30) || 'unknown';
     const isDomainMatch = disneyBlogs.some(d => link.includes(d));
     console.log(`  ${i + 1}. [${isDomainMatch ? 'DISNEY' : 'other'}] ${source}: ${link.substring(0, 100)}`);
-  });
+  }
 
   // Find first match from a Disney blog that looks like an article URL
   for (const match of matches) {

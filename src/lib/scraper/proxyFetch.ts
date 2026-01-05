@@ -5,7 +5,11 @@ const BLOCKED_DOMAINS = [
   'attractionsmagazine.com',
   'disneyfoodblog.com',
   'allears.net',
-  'laughingplace.com'
+  'laughingplace.com',
+  'wdwinfo.com',
+  'insidethemagic.net',
+  'themeparkinsider.com',
+  'orlandoparksnews.com'
 ];
 
 export async function smartFetch(url: string): Promise<Response> {
