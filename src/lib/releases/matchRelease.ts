@@ -184,18 +184,21 @@ export async function findMatchingRelease(
       confidence = 0.4 + (overlap - 0.4) * 0.5;
     }
 
-    // COLOR PENALTY: If search has a color but release has a DIFFERENT color, heavy penalty
+    // COLOR PENALTY: Penalize color mismatches
     const searchColors = extractColors(productName);
     const releaseColors = extractColors(releaseTitle);
     if (searchColors.length > 0 && releaseColors.length > 0) {
       const colorMatch = searchColors.some(c => releaseColors.includes(c));
       if (!colorMatch) {
-        // Different colors = likely wrong product (e.g., "Pink" vs "Valentine's")
+        // Different colors = likely wrong product
         confidence -= 0.4;
       }
+    } else if (releaseColors.length > 0 && searchColors.length === 0) {
+      // Release has specific color but search doesn't mention it - slight penalty
+      confidence -= 0.15;
     }
 
-    // KEYWORD PENALTY: If search has specific character/event but release has DIFFERENT one
+    // KEYWORD PENALTY: Penalize character/event mismatches
     const searchKeywords = extractKeywords(productName);
     const releaseKeywords = extractKeywords(releaseTitle);
     if (searchKeywords.length > 0 && releaseKeywords.length > 0) {
@@ -204,6 +207,11 @@ export async function findMatchingRelease(
         // Different characters/events = wrong product
         confidence -= 0.4;
       }
+    } else if (releaseKeywords.length > 0 && searchKeywords.length === 0) {
+      // Release has specific character (Cruella, Valentine's) but search doesn't
+      // This is a mismatch - "Spirit Jersey" shouldn't match "Cruella Spirit Jersey"
+      confidence -= 0.25;
+      console.log(`[MatchRelease] Penalty: release has "${releaseKeywords.join(',')}" but search doesn't`);
     }
 
     // Boost confidence for limited editions (they're more distinctive)

@@ -189,43 +189,68 @@ export function findDisneyMatch(matches: LensMatch[]): LensMatch | null {
   if (matches.length === 0) return null;
 
   // Log top 5 matches for debugging
-  console.log('[Lens] Top 5 matches:');
+  console.log('[Lens] Top 5 raw matches:');
   matches.slice(0, 5).forEach((m, i) => {
-    console.log(`  ${i + 1}. "${m.title}" (${m.source}) - ${m.link?.substring(0, 50)}`);
+    console.log(`  ${i + 1}. "${m.title}" (${m.source})`);
   });
 
-  // Filter out garbage results first
+  // AGGRESSIVE filtering - filter out garbage first
   const filteredMatches = matches.filter(m => {
-    const title = m.title?.toLowerCase() || '';
-    const source = m.source?.toLowerCase() || '';
-    const link = m.link?.toLowerCase() || '';
+    const title = (m.title || '').toLowerCase();
+    const source = (m.source || '').toLowerCase();
+    const link = (m.link || '').toLowerCase();
 
-    // Skip obvious garbage
-    if (title.includes('scam') || title.includes('warning') || title.includes('parking')) {
+    // Skip Reddit posts
+    if (link.includes('reddit.com') || source.includes('reddit') || title.includes('r/') || title.includes(': r/')) {
+      console.log('[Lens] SKIP Reddit:', title.substring(0, 40));
       return false;
     }
 
-    // Skip social media profiles (unless title looks like a product)
-    if (source === 'instagram' || source === 'facebook' || source === 'twitter' || source === 'tiktok') {
-      const productWords = ['jersey', 'fleece', 'jacket', 'shirt', 'hoodie', 'sweater', 'ears', 'bag', 'backpack', 'mug', 'pin', 'plush', 'disney', 'loungefly'];
-      if (!productWords.some(pw => title.includes(pw))) {
+    // Skip social media (unless title has product keywords)
+    const socialPlatforms = ['instagram', 'facebook', 'twitter', 'tiktok', 'pinterest', 'tumblr'];
+    if (socialPlatforms.some(p => source.includes(p) || link.includes(p))) {
+      const productKeywords = ['jersey', 'fleece', 'jacket', 'shirt', 'hoodie', 'ears', 'loungefly', 'spirit', 'disney'];
+      if (!productKeywords.some(kw => title.includes(kw))) {
+        console.log('[Lens] SKIP social:', title.substring(0, 40));
         return false;
       }
     }
 
-    // Skip if title looks like a person's name (no product words)
-    if (title.split(' ').length <= 3 && !title.includes('disney') && !title.includes('jersey')) {
-      // Could be "John Smith" or "Liana Satenstein" - skip unless from commerce site
-      const commerceSites = ['amazon', 'ebay', 'mercari', 'poshmark', 'etsy', 'shop', 'store'];
-      if (!commerceSites.some(s => link.includes(s))) {
-        return false;
+    // Skip obvious non-products (questions, complaints, warnings)
+    const skipPhrases = [
+      'scam', 'warning', 'sold me', 'next steps', 'help', 'question', 'advice',
+      'hole in it', 'broken', 'fake', 'parking', 'refund', 'return', 'complaint',
+      'what should', 'how do i', 'is this', 'anyone know', 'looking for'
+    ];
+    if (skipPhrases.some(phrase => title.includes(phrase))) {
+      console.log('[Lens] SKIP non-product:', title.substring(0, 40));
+      return false;
+    }
+
+    // Skip if title is too short (likely a username or gibberish)
+    if (title.length < 10) {
+      console.log('[Lens] SKIP short title:', title);
+      return false;
+    }
+
+    // Skip if title looks like a person's name (2-3 words, no product keywords)
+    const words = title.split(/\s+/);
+    if (words.length <= 3) {
+      const productIndicators = ['disney', 'jersey', 'fleece', 'jacket', 'shirt', 'hoodie', 'ears', 'bag', 'mug', 'pin'];
+      if (!productIndicators.some(pi => title.includes(pi))) {
+        // Looks like a name - only keep if from commerce site
+        const commerceSites = ['amazon', 'ebay', 'mercari', 'poshmark', 'etsy', 'shop', 'store'];
+        if (!commerceSites.some(s => link.includes(s))) {
+          console.log('[Lens] SKIP name-like:', title);
+          return false;
+        }
       }
     }
 
     return true;
   });
 
-  console.log(`[Lens] After filtering: ${filteredMatches.length} of ${matches.length} matches remain`);
+  console.log(`[Lens] Filtered: ${matches.length} → ${filteredMatches.length} valid matches`);
 
   // Priority 1: Disney blog sources (most likely to have accurate names)
   const disneyBlogs = [
