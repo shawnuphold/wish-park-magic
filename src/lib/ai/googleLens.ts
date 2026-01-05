@@ -329,6 +329,44 @@ export function findDisneyMatch(matches: LensMatch[]): LensMatch | null {
 }
 
 /**
+ * Find Disney blog article URL from Lens results
+ * Prioritizes high-quality Disney news sources over product listings
+ * Returns null if no suitable article found
+ */
+export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
+  if (matches.length === 0) return null;
+
+  // Disney blog domains in priority order
+  const disneyBlogs = [
+    'wdwnt.com',
+    'blogmickey.com',
+    'disneyfoodblog.com',
+    'laughingplace.com',
+    'allears.net',
+    'themeparkinsider.com',
+    'wdwinfo.com',
+    'orlandoparksnews.com',
+    'chipandco.com',
+    'attractionsmagazine.com',
+    'insidethemagic.net'
+  ];
+
+  // Find first match from a Disney blog
+  for (const match of matches) {
+    const link = match.link || '';
+    for (const domain of disneyBlogs) {
+      if (link.includes(domain)) {
+        console.log(`[Lens] Found Disney article: ${link}`);
+        return link;
+      }
+    }
+  }
+
+  console.log('[Lens] No Disney blog article found in results');
+  return null;
+}
+
+/**
  * Extract product name from a Lens match
  * Cleans up common patterns in titles
  */

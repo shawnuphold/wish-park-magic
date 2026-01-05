@@ -9,12 +9,14 @@ import { analyzeImage, extractParkContext, type VisionAnalysisResult } from './g
 import { describeProduct, type ProductDescription } from './describeProduct';
 import { searchLocalDatabase, type LocalSearchResult } from './searchLocalDatabase';
 import { searchProductArticles, type WebSearchResult } from './searchProductArticles';
-import { searchGoogleLens, findDisneyMatch, extractProductName, type LensMatch } from './googleLens';
+import { searchGoogleLens, findDisneyMatch, findDisneyArticleUrl, extractProductName, type LensMatch } from './googleLens';
+import { extractProductFromArticle, type ExtractedProductInfo } from './extractProductFromArticle';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export type LookupStep =
   | 'fetching_settings'
   | 'searching_lens'
+  | 'extracting_article'
   | 'analyzing_image'
   | 'generating_description'
   | 'searching_database'
@@ -33,6 +35,7 @@ export interface ProductLookupResult {
   lensMatch: LensMatch | null;
   visionAnalysis: VisionAnalysisResult | null;
   productDescription: ProductDescription | null;
+  articleProduct: ExtractedProductInfo | null;
 
   // Search results
   localMatch: LocalSearchResult | null;
@@ -112,6 +115,7 @@ export async function lookupProduct(
   let lensMatch: LensMatch | null = null;
   let visionAnalysis: VisionAnalysisResult | null = null;
   let productDescription: ProductDescription | null = null;
+  let articleProduct: ExtractedProductInfo | null = null;
   let localMatch: LocalSearchResult | null = null;
   let webResult: WebSearchResult | null = null;
 
@@ -152,6 +156,30 @@ export async function lookupProduct(
             link: lensMatch.link,
             usage: lensResult.usageInfo
           });
+        }
+
+        // Try to find a Disney blog article for more accurate product info
+        const articleUrl = findDisneyArticleUrl(lensResult.visualMatches);
+        if (articleUrl) {
+          addStep('extracting_article', `Fetching article: ${articleUrl.substring(0, 50)}...`);
+          try {
+            const articleResult = await extractProductFromArticle(articleUrl);
+            if (articleResult.success && articleResult.product) {
+              articleProduct = articleResult.product;
+              console.log('[ProductLookup] Extracted from article:', articleProduct.productName);
+              addStep('extracting_article', `Extracted: ${articleProduct.productName}`, {
+                name: articleProduct.productName,
+                price: articleProduct.price,
+                location: articleProduct.location,
+                sourceUrl: articleUrl
+              });
+            } else {
+              addStep('extracting_article', `Article extraction failed: ${articleResult.error || 'Unknown error'}`);
+            }
+          } catch (articleError) {
+            console.error('[ProductLookup] Article extraction error:', articleError);
+            addStep('extracting_article', `Article fetch failed: ${articleError instanceof Error ? articleError.message : 'Unknown error'}`);
+          }
         }
       } else if (lensResult.error === 'Monthly limit reached') {
         addStep('searching_lens', 'SerpApi limit reached, falling back...', lensResult.usageInfo);
@@ -239,8 +267,8 @@ export async function lookupProduct(
     }
 
     // Compile final result
-    const product = buildFinalProduct(lensMatch, productDescription, localMatch, webResult);
-    const confidence = calculateOverallConfidence(lensMatch, productDescription, localMatch, webResult);
+    const product = buildFinalProduct(lensMatch, articleProduct, productDescription, localMatch, webResult);
+    const confidence = calculateOverallConfidence(lensMatch, articleProduct, productDescription, localMatch, webResult);
 
     addStep('complete', 'Product lookup complete', { confidence });
 
@@ -248,6 +276,7 @@ export async function lookupProduct(
       lensMatch,
       visionAnalysis,
       productDescription,
+      articleProduct,
       localMatch,
       webResult,
       product,
@@ -264,6 +293,7 @@ export async function lookupProduct(
       lensMatch: null,
       visionAnalysis: null,
       productDescription: null,
+      articleProduct: null,
       localMatch: null,
       webResult: null,
       product: null,
@@ -279,13 +309,33 @@ export async function lookupProduct(
  */
 function buildFinalProduct(
   lensMatch: LensMatch | null,
+  articleProduct: ExtractedProductInfo | null,
   description: ProductDescription | null,
   localMatch: LocalSearchResult | null,
   webResult: WebSearchResult | null
 ): ProductLookupResult['product'] {
-  // Priority: Google Lens > local database > web search > AI description
+  // Priority: Article extraction > Google Lens > local database > web search > AI description
 
-  // If we have a high-quality lens match, use it
+  // If we extracted product info from a Disney blog article, use it (most accurate)
+  if (articleProduct) {
+    return {
+      name: articleProduct.productName,
+      description: articleProduct.description || `Found via Disney blog article`,
+      price: articleProduct.price || null,
+      park: articleProduct.location?.toLowerCase().includes('disney') ? 'disney' : null,
+      store: articleProduct.location || null,
+      land: null,
+      category: articleProduct.category || description?.estimatedCategory || 'merchandise',
+      availability: articleProduct.isLimitedEdition ? 'limited' : 'available',
+      characters: description?.characters || [],
+      themes: description?.themes || [],
+      imageUrl: lensMatch?.thumbnail || null,
+      sourceUrl: lensMatch?.link || null,
+      sourceType: 'google_lens'
+    };
+  }
+
+  // If we have a lens match but no article, use the lens match
   if (lensMatch) {
     const productName = extractProductName(lensMatch);
     return {
@@ -371,10 +421,17 @@ function buildFinalProduct(
  */
 function calculateOverallConfidence(
   lensMatch: LensMatch | null,
+  articleProduct: ExtractedProductInfo | null,
   description: ProductDescription | null,
   localMatch: LocalSearchResult | null,
   webResult: WebSearchResult | null
 ): number {
+  // Article extraction from Disney blog = highest confidence
+  if (articleProduct) {
+    // We successfully extracted product info from a trusted source
+    return 98;
+  }
+
   // Google Lens matches are highly confident
   if (lensMatch) {
     // If lens found it on a Disney blog/ShopDisney, very high confidence

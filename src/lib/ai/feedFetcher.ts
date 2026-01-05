@@ -532,19 +532,36 @@ export async function processFeedSource(source: FeedSource): Promise<{
         let content: string;
         let images: string[];
 
-        try {
-          const scraped = await scrapeArticle(item.link);
-          content = scraped.content;
-          images = scraped.images;
-        } catch (scrapeError) {
-          // Fallback to RSS content when scraping fails (e.g., 403 errors)
-          log.warn(`Scrape failed, using RSS content fallback`, { title: item.title });
-          // Use contentEncoded (full HTML with images) first, then fall back to content/description
-          const rssContent = item.contentEncoded || item.content || '';
+        // PREFER RSS content to avoid ScraperAPI costs
+        // RSS feeds provide content:encoded which has full article HTML with images
+        // Only scrape if RSS content is insufficient (< 500 chars or no images)
+        const rssContent = item.contentEncoded || item.content || '';
+        const rssImages = extractImagesFromHtml(rssContent, item.link || '');
+
+        if (rssContent.length >= 500 || rssImages.length > 0) {
+          // RSS content is sufficient - use it (FREE, no ScraperAPI)
           content = rssContent;
-          // Extract images from RSS content HTML
-          images = extractImagesFromHtml(rssContent, item.link || '');
-          log.debug(`Found images from RSS content`, { imageCount: images.length, contentLength: item.contentEncoded ? item.contentEncoded.length : 0 });
+          images = rssImages;
+          log.debug(`Using RSS content (no scrape needed)`, {
+            contentLength: rssContent.length,
+            imageCount: images.length
+          });
+        } else {
+          // RSS content insufficient - need to scrape (uses ScraperAPI credits)
+          try {
+            log.debug(`RSS content insufficient, scraping article`, {
+              rssLength: rssContent.length,
+              rssImages: rssImages.length
+            });
+            const scraped = await scrapeArticle(item.link);
+            content = scraped.content;
+            images = scraped.images;
+          } catch (scrapeError) {
+            // Fallback to RSS content when scraping fails (e.g., 403 errors)
+            log.warn(`Scrape failed, using RSS content fallback`, { title: item.title });
+            content = rssContent;
+            images = rssImages;
+          }
         }
 
         const result = await processArticle(
