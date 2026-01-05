@@ -554,133 +554,50 @@ export function createTelegramBot(): Telegraf {
         imageCount: images.length
       });
 
-      // Detect product regions in the screenshot and run Google Lens on each
+      // For FB/Messenger screenshots: Use Claude's extraction only (Lens disabled)
+      // Lens returns garbage for cropped screenshot regions (social media captions, Reddit posts)
+      // Lens works great for standalone product photos, but not for screenshots
       const matchedReleases = new Map<number, MatchedRelease>();
 
-      // Step 1: Analyze the screenshot to find embedded product images
-      log.info('Detecting product regions in screenshot...');
-      const imageAnalysis = await analyzeScreenshot(images[0].base64);
-      log.info('Screenshot analysis', {
-        type: imageAnalysis.type,
-        hasEmbeddedImages: imageAnalysis.hasEmbeddedImages,
-        productRegions: imageAnalysis.productRegions.length
+      log.info('FB screenshot detected - using Claude extraction only (Lens disabled for screenshots)', {
+        customerName: analysis.customerName,
+        itemCount: analysis.items.length
       });
 
-      // Map to store Lens results for each item by matching to regions
-      const lensResultsByItem = new Map<number, { name: string; price: number | null; source: string }>();
-
-      // Step 2: If we found product regions, crop and search each one
-      if (imageAnalysis.productRegions.length > 0) {
-        const imageBuffer = Buffer.from(images[0].base64, 'base64');
-
-        for (let regionIdx = 0; regionIdx < imageAnalysis.productRegions.length; regionIdx++) {
-          const region = imageAnalysis.productRegions[regionIdx];
-
-          if (!region.isProduct) continue;
-
-          log.info('Processing product region', {
-            regionIndex: regionIdx,
-            description: region.description,
-            boundingBox: region.boundingBox
-          });
-
-          try {
-            // Crop the product image from the screenshot
-            const croppedBuffer = await cropImageRegion(imageBuffer, region.boundingBox);
-
-            // Upload cropped image to S3 with presigned URL for Google Lens access
-            const croppedS3Url = await uploadBufferForExternalAccess(croppedBuffer, 'temp-lookup', 'image/jpeg');
-            log.info('Uploaded cropped product image with presigned URL', { regionIndex: regionIdx });
-
-            // Run Google Lens on the cropped product image
-            const lensResult = await searchGoogleLens(croppedS3Url);
-
-            if (lensResult.success && lensResult.visualMatches.length > 0) {
-              const match = findDisneyMatch(lensResult.visualMatches);
-              if (match) {
-                const lensName = extractProductName(match);
-                log.info('Google Lens found product from cropped region', {
-                  regionIndex: regionIdx,
-                  regionDescription: region.description,
-                  lensName,
-                  source: match.source,
-                  price: match.price?.value
-                });
-
-                // Store result - will match to item by index or description
-                lensResultsByItem.set(regionIdx, {
-                  name: lensName,
-                  price: match.price?.extracted_value || null,
-                  source: match.source
-                });
-              }
-            } else {
-              log.info('No Lens matches for cropped region', {
-                regionIndex: regionIdx,
-                error: lensResult.error
-              });
-            }
-          } catch (error) {
-            log.error('Error processing product region', { regionIndex: regionIdx, error });
-          }
-        }
-      } else {
-        // No regions detected - fall back to uploading whole image (less accurate)
-        log.info('No product regions detected, skipping Lens (would search whole screenshot)');
-      }
-
-      // Step 3: Match items to Lens results and local database
+      // Match items to local database using Claude's extraction
       for (let i = 0; i < analysis.items.length; i++) {
         const item = analysis.items[i];
-        let productName = item.productName; // Start with Claude's extraction
-        let lensPrice: number | null = null;
-        let lensSource: string | null = null;
+        const productName = item.productName; // Use Claude's extraction
 
-        // Try to get Lens result for this item
-        // Match by index (assuming items and regions are in same order)
-        const lensResult = lensResultsByItem.get(i);
-        if (lensResult) {
-          log.info('Using Lens result for item', {
-            itemIndex: i,
-            claudeName: item.productName,
-            lensName: lensResult.name
-          });
-          productName = lensResult.name;
-          lensPrice = lensResult.price;
-          lensSource = lensResult.source;
-        }
+        log.info('Processing item from Claude extraction', {
+          itemIndex: i,
+          productName,
+          category: item.category
+        });
 
-        // Now try to match against local database with the (potentially corrected) name
+        // Try to match against local database
         try {
           const releaseMatch = await findMatchingRelease(productName, item.category);
           if (releaseMatch.found && releaseMatch.release) {
             matchedReleases.set(i, {
               id: releaseMatch.release.id,
               title: releaseMatch.release.title,
-              price_estimate: lensPrice || releaseMatch.release.price_estimate,
+              price_estimate: releaseMatch.release.price_estimate,
               ai_demand_score: releaseMatch.release.ai_demand_score,
               is_limited_edition: releaseMatch.release.is_limited_edition,
               confidence: releaseMatch.confidence
             });
-          } else if (lensSource) {
-            // No local match but Lens found it - create a pseudo-match
-            matchedReleases.set(i, {
-              id: '',
-              title: productName,  // Use Lens name
-              price_estimate: lensPrice,
-              ai_demand_score: null,
-              is_limited_edition: false,
-              confidence: 90  // High confidence from Lens
+            log.info('Matched to local release', {
+              itemIndex: i,
+              claudeName: productName,
+              matchedName: releaseMatch.release.title,
+              confidence: releaseMatch.confidence
             });
-            log.info('Using Google Lens result (no local match)', { productName, lensPrice });
+          } else {
+            log.info('No local match for item', { itemIndex: i, productName });
           }
         } catch (error) {
           log.error('Error matching release', { item: productName, error });
-        }
-
-        // Update the item name with the Lens-corrected name for display
-        if (productName !== item.productName) {
-          item.productName = productName;
         }
       }
 
