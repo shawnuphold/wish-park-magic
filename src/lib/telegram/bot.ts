@@ -24,6 +24,7 @@ import { uploadBufferToFolder } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
 import { lookupProduct } from '@/lib/ai/productLookup';
 import { analyzeImage, extractParkContext, type VisionAnalysisResult } from '@/lib/ai/googleVision';
+import { searchGoogleLens, findDisneyMatch, extractProductName } from '@/lib/ai/googleLens';
 
 const log = createLogger('TelegramBot');
 
@@ -551,24 +552,96 @@ export function createTelegramBot(): Telegraf {
         imageCount: images.length
       });
 
-      // Try to match releases for each item
+      // First, upload images to S3 for Google Lens lookups
+      const s3Urls: string[] = [];
+      for (const img of images) {
+        try {
+          const buffer = Buffer.from(img.base64, 'base64');
+          const url = await uploadBufferToFolder(buffer, 'temp-lookup', 'image/jpeg');
+          s3Urls.push(url);
+        } catch (error) {
+          log.error('Failed to upload image for Lens lookup', error);
+          s3Urls.push('');
+        }
+      }
+
+      // Try Google Lens for each item to get accurate product names
       const matchedReleases = new Map<number, MatchedRelease>();
       for (let i = 0; i < analysis.items.length; i++) {
         const item = analysis.items[i];
+        const imageIndex = item.imageIndex ?? i;
+        const s3Url = s3Urls[imageIndex] || s3Urls[0];
+
+        let productName = item.productName; // Start with Claude's extraction
+        let lensPrice: number | null = null;
+        let lensSource: string | null = null;
+
+        // Try Google Lens first for accurate product identification
+        if (s3Url) {
+          try {
+            log.info('Running Google Lens for item', {
+              itemIndex: i,
+              claudeName: item.productName,
+              imageUrl: s3Url
+            });
+
+            const lensResult = await searchGoogleLens(s3Url);
+
+            if (lensResult.success && lensResult.visualMatches.length > 0) {
+              const match = findDisneyMatch(lensResult.visualMatches);
+              if (match) {
+                const lensName = extractProductName(match);
+                log.info('Google Lens found product', {
+                  claudeName: item.productName,
+                  lensName,
+                  source: match.source,
+                  price: match.price?.value
+                });
+
+                // Use Lens name instead of Claude's generic extraction
+                productName = lensName;
+                lensPrice = match.price?.extracted_value || null;
+                lensSource = match.source;
+              }
+            } else if (lensResult.error) {
+              log.warn('Google Lens error', { error: lensResult.error });
+            }
+          } catch (error) {
+            log.error('Google Lens lookup failed', error);
+          }
+        }
+
+        // Now try to match against local database with the (potentially corrected) name
         try {
-          const releaseMatch = await findMatchingRelease(item.productName, item.category);
+          const releaseMatch = await findMatchingRelease(productName, item.category);
           if (releaseMatch.found && releaseMatch.release) {
             matchedReleases.set(i, {
               id: releaseMatch.release.id,
               title: releaseMatch.release.title,
-              price_estimate: releaseMatch.release.price_estimate,
+              price_estimate: lensPrice || releaseMatch.release.price_estimate,
               ai_demand_score: releaseMatch.release.ai_demand_score,
               is_limited_edition: releaseMatch.release.is_limited_edition,
               confidence: releaseMatch.confidence
             });
+          } else if (lensSource) {
+            // No local match but Lens found it - create a pseudo-match
+            matchedReleases.set(i, {
+              id: '',
+              title: productName,  // Use Lens name
+              price_estimate: lensPrice,
+              ai_demand_score: null,
+              is_limited_edition: false,
+              confidence: 90  // High confidence from Lens
+            });
+            log.info('Using Google Lens result (no local match)', { productName, lensPrice });
           }
         } catch (error) {
-          log.error('Error matching release', { item: item.productName, error });
+          log.error('Error matching release', { item: productName, error });
+        }
+
+        // Update the item name with the Lens-corrected name for display
+        if (productName !== item.productName) {
+          item.productName = productName;
         }
       }
 
