@@ -134,6 +134,9 @@ export async function searchGoogleLens(imageUrl: string): Promise<GoogleLensResu
     const response = await fetch(searchUrl.toString());
     const data = await response.json();
 
+    // Debug: Log response structure
+    console.log('[Lens] Response top-level keys:', Object.keys(data));
+
     if (data.error) {
       console.error('[Lens] API Error:', data.error);
       return {
@@ -147,15 +150,27 @@ export async function searchGoogleLens(imageUrl: string): Promise<GoogleLensResu
     // Increment usage counter on successful request
     await incrementUsage();
 
-    const matches = data.visual_matches || [];
+    // Try different possible keys for visual matches
+    const matches = data.visual_matches || data.results || data.images || data.image_results || [];
     console.log(`[Lens] Found ${matches.length} visual matches`);
 
-    // Log first few matches with URLS for debugging
+    // Log first match structure in detail
     if (matches.length > 0) {
-      console.log('[Lens] Top 5 matches with URLs:');
-      matches.slice(0, 5).forEach((m: any, i: number) => {
-        console.log(`  ${i + 1}. ${m.source || 'unknown'}: ${m.link?.substring(0, 100) || 'NO LINK'}`);
-      });
+      const first = matches[0];
+      console.log('[Lens] First match keys:', Object.keys(first));
+      console.log('[Lens] First match.title:', first.title);
+      console.log('[Lens] First match.link:', first.link);
+      console.log('[Lens] First match.url:', first.url);
+      console.log('[Lens] First match.source:', first.source);
+      console.log('[Lens] First match.source_url:', first.source_url);
+
+      console.log('[Lens] Top 5 matches:');
+      for (let i = 0; i < Math.min(5, matches.length); i++) {
+        const m = matches[i];
+        const link = m.link || m.url || m.source_url || 'NO_LINK';
+        const source = m.source || 'unknown';
+        console.log(`  ${i + 1}. [${source}] ${link}`);
+      }
     }
 
     return {
@@ -354,20 +369,25 @@ export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
   ];
 
   // Debug: Log first 10 matches to see what URLs we're getting
-  console.log('[Lens] Searching for Disney article URLs in', matches.length, 'matches');
+  console.log('[Lens] findDisneyArticleUrl called with', matches.length, 'matches');
 
-  // Log raw first match to debug structure
+  // Log first match properties individually (avoid truncation)
   if (matches.length > 0) {
-    console.log('[Lens] Raw first match structure:', JSON.stringify(matches[0], null, 2));
+    const first = matches[0];
+    console.log('[Lens] First match in findDisneyArticleUrl:');
+    console.log('  - keys:', Object.keys(first));
+    console.log('  - link:', first.link);
+    console.log('  - source:', first.source);
+    console.log('  - title:', first.title?.substring(0, 50));
   }
 
-  console.log('[Lens] First 10 match URLs:');
+  console.log('[Lens] Checking first 10 for Disney domains:');
   for (let i = 0; i < Math.min(10, matches.length); i++) {
     const m = matches[i];
-    const link = m.link || m.source || 'NO_LINK';
-    const source = m.source || m.title?.substring(0, 30) || 'unknown';
-    const isDomainMatch = disneyBlogs.some(d => link.includes(d));
-    console.log(`  ${i + 1}. [${isDomainMatch ? 'DISNEY' : 'other'}] ${source}: ${link.substring(0, 100)}`);
+    const link = m.link || '';
+    const source = m.source || 'unknown';
+    const isDomainMatch = link ? disneyBlogs.some(d => link.includes(d)) : false;
+    console.log(`  ${i + 1}. [${isDomainMatch ? 'DISNEY' : 'other'}] ${source}: ${link ? link.substring(0, 80) : 'NO_LINK'}`);
   }
 
   // Find first match from a Disney blog that looks like an article URL
