@@ -24,7 +24,7 @@ import { uploadBufferToFolder, uploadBufferForExternalAccess } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
 import { lookupProduct } from '@/lib/ai/productLookup';
 import { analyzeImage, extractParkContext, type VisionAnalysisResult } from '@/lib/ai/googleVision';
-import { searchGoogleLens, findDisneyMatch, findDisneyArticleUrl, extractProductName } from '@/lib/ai/googleLens';
+import { searchGoogleLens, findDisneyMatch, findDisneyArticleUrl, findAllDisneyArticleUrls, extractProductName } from '@/lib/ai/googleLens';
 import { analyzeScreenshot, type ImageAnalysis } from '@/lib/ai/detectImageType';
 import { cropImageRegion } from '@/lib/images/cropImage';
 import { extractProductFromArticle } from '@/lib/ai/extractProductFromArticle';
@@ -569,112 +569,123 @@ export function createTelegramBot(): Telegraf {
 
       const matchedReleases = new Map<number, MatchedRelease>();
 
-      // For FB/Messenger screenshots: Try to find article URLs via Google Lens on cropped product regions
-      // This gives us accurate product names from Disney blog articles
-      log.info('FB screenshot detected - processing with Lens article lookup', {
+      // For FB/Messenger screenshots: Try Lens on FULL screenshot first (cheaper - 1 API call)
+      // This works because Google Lens can identify multiple products from a single screenshot
+      log.info('FB screenshot detected - trying Lens on full screenshot first', {
         customerName: analysis.customerName,
         itemCount: analysis.items.length
       });
 
-      // First, analyze the screenshot to detect product regions
       const imageBuffer = Buffer.from(images[0].base64, 'base64');
-      let screenshotAnalysis: ImageAnalysis | null = null;
 
+      // Map to store article-extracted product names by index
+      const articleExtractedNames = new Map<number, { name: string; price: number | null; store: string | null }>();
+
+      // Step 1: Run Lens on FULL screenshot first
       try {
-        screenshotAnalysis = await analyzeScreenshot(images[0].base64);
-        log.info('Screenshot analysis complete', {
-          type: screenshotAnalysis.type,
-          productRegions: screenshotAnalysis.productRegions?.length || 0,
-          hasEmbeddedImages: screenshotAnalysis.hasEmbeddedImages
-        });
-      } catch (error) {
-        log.warn('Screenshot analysis failed, continuing with Claude extraction', error);
-      }
+        log.info('Uploading full screenshot to S3 for Lens...');
+        const fullScreenshotUrl = await uploadBufferForExternalAccess(imageBuffer, 'temp-lookup', 'image/jpeg');
+        log.info('Running Lens on full screenshot...');
 
-      // Process each item - try to enhance with Lens article lookup
-      for (let i = 0; i < analysis.items.length; i++) {
-        const item = analysis.items[i];
-        let enhancedProductName = item.productName; // Start with Claude's extraction
-        let articlePrice: number | null = null;
-        let articleStore: string | null = null;
+        const fullLensResult = await searchGoogleLens(fullScreenshotUrl);
 
-        // Try to get better product name from Lens + article extraction
-        if (screenshotAnalysis?.productRegions && screenshotAnalysis.productRegions.length > i) {
-          const region = screenshotAnalysis.productRegions[i];
+        if (fullLensResult.success && fullLensResult.visualMatches.length > 0) {
+          log.info(`Lens found ${fullLensResult.visualMatches.length} matches from full screenshot`);
 
-          if (region.isProduct && region.boundingBox) {
-            try {
-              log.info(`Processing product region ${i + 1}`, {
-                description: region.description,
-                boundingBox: region.boundingBox
-              });
+          // Find ALL Disney article URLs (might find multiple products)
+          const articleUrls = findAllDisneyArticleUrls(fullLensResult.visualMatches);
 
-              // Crop the product image from the screenshot
-              const croppedBuffer = await cropImageRegion(imageBuffer, region.boundingBox);
-              log.info(`Cropped product ${i + 1}: ${croppedBuffer.length} bytes`);
+          if (articleUrls.length > 0) {
+            log.info(`Found ${articleUrls.length} Disney article URLs from full screenshot!`);
 
-              // Upload cropped image to S3 with presigned URL for Lens
-              const croppedS3Url = await uploadBufferForExternalAccess(croppedBuffer, 'temp-lookup', 'image/jpeg');
-              log.info(`Cropped product ${i + 1} uploaded to S3`);
+            // Fetch each article and extract product info
+            for (let urlIdx = 0; urlIdx < articleUrls.length; urlIdx++) {
+              const url = articleUrls[urlIdx];
+              try {
+                log.info(`Fetching article ${urlIdx + 1}/${articleUrls.length}: ${url}`);
+                const articleResult = await extractProductFromArticle(url);
 
-              // Run Google Lens on the cropped product image
-              const lensResult = await searchGoogleLens(croppedS3Url);
+                if (articleResult.success && articleResult.product) {
+                  const extractedName = articleResult.product.productName;
+                  const extractedPrice = articleResult.product.price || null;
+                  const extractedStore = articleResult.product.location || null;
 
-              if (lensResult.success && lensResult.visualMatches.length > 0) {
-                log.info(`Lens found ${lensResult.visualMatches.length} matches for product ${i + 1}`);
+                  log.info(`Article extraction success: ${extractedName}`, {
+                    price: extractedPrice,
+                    store: extractedStore
+                  });
 
-                // Look ONLY for Disney article URLs (ignore garbage titles)
-                const articleUrl = findDisneyArticleUrl(lensResult.visualMatches);
+                  // Try to match this extracted name to one of Claude's items
+                  // by checking for word overlap
+                  for (let i = 0; i < analysis.items.length; i++) {
+                    if (articleExtractedNames.has(i)) continue; // Already matched
 
-                if (articleUrl) {
-                  log.info(`Found Disney article for product ${i + 1}: ${articleUrl}`);
+                    const claudeName = analysis.items[i].productName.toLowerCase();
+                    const articleName = extractedName.toLowerCase();
 
-                  // Fetch article and extract accurate product name
-                  const articleResult = await extractProductFromArticle(articleUrl);
+                    // Check for significant word overlap
+                    const claudeWords = claudeName.split(/\s+/).filter(w => w.length > 3);
+                    const articleWords = articleName.split(/\s+/).filter(w => w.length > 3);
+                    const matchingWords = claudeWords.filter(w => articleWords.some(aw => aw.includes(w) || w.includes(aw)));
 
-                  if (articleResult.success && articleResult.product) {
-                    enhancedProductName = articleResult.product.productName;
-                    articlePrice = articleResult.product.price || null;
-                    articleStore = articleResult.product.location || null;
+                    if (matchingWords.length >= 2 || claudeName.includes('spirit') && articleName.includes('spirit') ||
+                        claudeName.includes('fleece') && articleName.includes('fleece') ||
+                        claudeName.includes('ears') && articleName.includes('ears')) {
+                      articleExtractedNames.set(i, { name: extractedName, price: extractedPrice, store: extractedStore });
+                      log.info(`Matched article product to Claude item ${i + 1}`, {
+                        claudeName: analysis.items[i].productName,
+                        articleName: extractedName,
+                        matchingWords
+                      });
+                      break;
+                    }
+                  }
 
-                    log.info(`Article extraction success for product ${i + 1}`, {
-                      originalName: item.productName,
-                      enhancedName: enhancedProductName,
-                      price: articlePrice,
-                      store: articleStore
-                    });
-                  } else {
-                    log.warn(`Article extraction failed for product ${i + 1}`, {
-                      error: articleResult.error
-                    });
+                  // If no match found, assign to first unmatched item
+                  if (![...articleExtractedNames.values()].some(v => v.name === extractedName)) {
+                    for (let i = 0; i < analysis.items.length; i++) {
+                      if (!articleExtractedNames.has(i)) {
+                        articleExtractedNames.set(i, { name: extractedName, price: extractedPrice, store: extractedStore });
+                        log.info(`Assigned article product to first available slot ${i + 1}`, {
+                          articleName: extractedName
+                        });
+                        break;
+                      }
+                    }
                   }
                 } else {
-                  log.info(`No Disney article found for product ${i + 1}, using Claude description`);
+                  log.warn(`Article extraction failed: ${url}`, { error: articleResult.error });
                 }
-              } else {
-                log.info(`No Lens matches for product ${i + 1}`, {
-                  error: lensResult.error
-                });
+              } catch (articleError) {
+                log.error(`Error fetching article: ${url}`, articleError);
               }
-            } catch (error) {
-              log.error(`Error processing product region ${i + 1}`, error);
-              // Keep Claude's extraction as fallback
             }
+          } else {
+            log.info('No Disney article URLs found in full screenshot Lens results');
           }
+        } else {
+          log.info('No Lens matches from full screenshot', { error: fullLensResult.error });
         }
+      } catch (lensError) {
+        log.error('Error running Lens on full screenshot', lensError);
+      }
 
-        // Update item with enhanced name if found
-        if (enhancedProductName !== item.productName) {
-          log.info(`Enhanced product name for item ${i + 1}`, {
-            original: item.productName,
-            enhanced: enhancedProductName
+      // Step 2: Apply extracted names to items, or keep Claude's description
+      for (let i = 0; i < analysis.items.length; i++) {
+        const extracted = articleExtractedNames.get(i);
+        if (extracted) {
+          log.info(`Using article-extracted name for item ${i + 1}`, {
+            original: analysis.items[i].productName,
+            enhanced: extracted.name
           });
-          analysis.items[i].productName = enhancedProductName;
+          analysis.items[i].productName = extracted.name;
+        } else {
+          log.info(`No article match for item ${i + 1}, keeping Claude description: ${analysis.items[i].productName}`);
         }
 
-        // Search local database with enhanced name
-        const productName = enhancedProductName.toLowerCase();
-        log.info('Searching local database for item', { itemIndex: i, productName: enhancedProductName });
+        // Search local database
+        const productName = analysis.items[i].productName.toLowerCase();
+        log.info('Searching local database for item', { itemIndex: i, productName: analysis.items[i].productName });
 
         try {
           const supabase = getSupabaseAdmin();
@@ -703,17 +714,18 @@ export function createTelegramBot(): Telegraf {
 
                 // Only accept if more matching than conflicting
                 if (matchingWords.length >= conflictingWords.length && matchingWords.length >= 2) {
+                  const extractedInfo = articleExtractedNames.get(i);
                   matchedReleases.set(i, {
                     id: release.id,
                     title: release.title,
-                    price_estimate: articlePrice || release.price_estimate,
+                    price_estimate: extractedInfo?.price || release.price_estimate,
                     ai_demand_score: release.ai_demand_score,
                     is_limited_edition: release.is_limited_edition,
                     confidence: 95
                   });
                   log.info('Found exact local match', {
                     itemIndex: i,
-                    searchName: enhancedProductName,
+                    searchName: analysis.items[i].productName,
                     matchedName: release.title,
                     matchingWords,
                     conflictingWords
@@ -721,7 +733,7 @@ export function createTelegramBot(): Telegraf {
                   break;
                 } else {
                   log.info('Rejected potential match (conflicting keywords)', {
-                    searchName: enhancedProductName,
+                    searchName: analysis.items[i].productName,
                     matchedName: release.title,
                     matchingWords,
                     conflictingWords
@@ -732,10 +744,10 @@ export function createTelegramBot(): Telegraf {
           }
 
           if (!matchedReleases.has(i)) {
-            log.info('No local match for item', { itemIndex: i, productName: enhancedProductName });
+            log.info('No local match for item', { itemIndex: i, productName: analysis.items[i].productName });
           }
         } catch (error) {
-          log.error('Error searching local database', { item: enhancedProductName, error });
+          log.error('Error searching local database', { item: analysis.items[i].productName, error });
         }
       }
 

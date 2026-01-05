@@ -344,7 +344,57 @@ export function findDisneyMatch(matches: LensMatch[]): LensMatch | null {
 }
 
 /**
- * Find Disney blog article URL from Lens results
+ * Find ALL Disney blog article URLs from Lens results
+ * Returns array of unique article URLs found
+ */
+export function findAllDisneyArticleUrls(matches: LensMatch[]): string[] {
+  const disneyBlogs = [
+    'wdwnt.com',
+    'blogmickey.com',
+    'disneyfoodblog.com',
+    'laughingplace.com',
+    'allears.net',
+    'themeparkinsider.com',
+    'wdwinfo.com',
+    'orlandoparksnews.com',
+    'chipandco.com',
+    'attractionsmagazine.com',
+    'insidethemagic.net'
+  ];
+
+  const urls: string[] = [];
+
+  for (const match of matches) {
+    const link = match.link || '';
+
+    if (disneyBlogs.some(domain => link.includes(domain))) {
+      const hasYearInUrl = /\/\d{4}\//.test(link);
+      const hasArticlePath =
+        link.includes('/news/') ||
+        link.includes('/article/') ||
+        link.includes('/merchandise/') ||
+        link.includes('/photos-') ||
+        link.includes('/review-') ||
+        link.includes('/first-look-') ||
+        link.includes('/new-');
+      const pathSegments = link.split('/').filter(s => s.length > 0).length;
+      const isHomepage = link.replace(/\/$/, '').endsWith(link.split('/')[2]) || pathSegments <= 2;
+
+      if ((hasYearInUrl || hasArticlePath || pathSegments >= 4) && !isHomepage) {
+        if (!urls.includes(link)) {
+          urls.push(link);
+          console.log('[Lens] Found Disney article URL:', link);
+        }
+      }
+    }
+  }
+
+  console.log(`[Lens] Found ${urls.length} unique Disney article URLs`);
+  return urls;
+}
+
+/**
+ * Find Disney blog article URL from Lens results (returns first match only)
  * Prioritizes high-quality Disney news sources over product listings
  * Returns null if no suitable article found
  *
