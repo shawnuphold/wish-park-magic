@@ -413,17 +413,17 @@ async function createRequestFromState(
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://enchantedparkpickups.com';
 
-    // Build items list for display (matched releases disabled)
+    // Build items list for display
     const itemsList = analysis.items.map((item, i) => {
       let line = `  ${i + 1}. ${item.productName}`;
       if (item.size) line += ` (${item.size})`;
       if (item.suggestedStore) line += `\n      📍 ${item.suggestedStore.store_name}`;
-      // DISABLED: Don't show matched release - matching is broken
-      // const matched = matchedReleases?.get(i);
-      // if (matched) {
-      //   line += `\n      🔗 ${matched.title}`;
-      //   if (matched.price_estimate) line += ` - $${matched.price_estimate}`;
-      // }
+      // Only show matched release if high confidence
+      const matched = matchedReleases?.get(i);
+      if (matched && matched.confidence >= 95) {
+        line += `\n      ✅ ${matched.title}`;
+        if (matched.price_estimate) line += ` - $${matched.price_estimate}`;
+      }
       return line;
     }).join('\n');
 
@@ -565,28 +565,91 @@ export function createTelegramBot(): Telegraf {
         itemCount: analysis.items.length
       });
 
-      // DISABLED: Release matching is returning wrong products
-      // (e.g., "Disney Spirit Jersey" → "101 Dalmatians Youth Spirit Jersey")
-      // Will be re-enabled when matching algorithm is fixed
-      // For now, just use Claude's extraction directly without matching
-      log.info('Release matching DISABLED - using Claude extraction only', {
-        itemCount: analysis.items.length
-      });
+      // Search local database for EXACT matches only
+      // Only use if we find a very high confidence match (>95%)
+      for (let i = 0; i < analysis.items.length; i++) {
+        const item = analysis.items[i];
+        const productName = item.productName.toLowerCase();
+
+        log.info('Searching local database for item', { itemIndex: i, productName: item.productName });
+
+        try {
+          const supabase = getSupabaseAdmin();
+
+          // Search for exact or very close title match
+          const { data: releases } = await supabase
+            .from('new_releases')
+            .select('id, title, price_estimate, store_name, ai_demand_score, is_limited_edition')
+            .or(`title.ilike.%${productName}%`)
+            .limit(5);
+
+          if (releases && releases.length > 0) {
+            // Check for high-confidence match
+            for (const release of releases) {
+              const releaseTitle = release.title.toLowerCase();
+
+              // Exact match
+              if (releaseTitle === productName || releaseTitle.includes(productName) || productName.includes(releaseTitle)) {
+                // Check for conflicting keywords (e.g., "Pink" vs "Dalmatians")
+                const itemKeywords = productName.split(/\s+/).filter(w => w.length > 3);
+                const releaseKeywords = releaseTitle.split(/\s+/).filter(w => w.length > 3);
+
+                // Count matching vs conflicting words
+                const matchingWords = itemKeywords.filter(w => releaseKeywords.includes(w));
+                const conflictingWords = releaseKeywords.filter(w => !itemKeywords.includes(w) && w.length > 4);
+
+                // Only accept if more matching than conflicting
+                if (matchingWords.length >= conflictingWords.length && matchingWords.length >= 2) {
+                  matchedReleases.set(i, {
+                    id: release.id,
+                    title: release.title,
+                    price_estimate: release.price_estimate,
+                    ai_demand_score: release.ai_demand_score,
+                    is_limited_edition: release.is_limited_edition,
+                    confidence: 95
+                  });
+                  log.info('Found exact local match', {
+                    itemIndex: i,
+                    searchName: item.productName,
+                    matchedName: release.title,
+                    matchingWords,
+                    conflictingWords
+                  });
+                  break;
+                } else {
+                  log.info('Rejected potential match (conflicting keywords)', {
+                    searchName: item.productName,
+                    matchedName: release.title,
+                    matchingWords,
+                    conflictingWords
+                  });
+                }
+              }
+            }
+          }
+
+          if (!matchedReleases.has(i)) {
+            log.info('No local match for item - using Claude extraction', { itemIndex: i, productName: item.productName });
+          }
+        } catch (error) {
+          log.error('Error searching local database', { item: item.productName, error });
+        }
+      }
 
       // Try to match customer
       const match = await matchCustomerByFBName(analysis.customerName);
 
-      // Build items list for preview (matched releases disabled)
+      // Build items list for preview
       const itemsList = analysis.items.map((item, i) => {
         let line = `${i + 1}. ${item.productName}`;
         if (item.size) line += ` (${item.size})`;
         if (item.suggestedStore) line += `\n   📍 ${item.suggestedStore.store_name}`;
-        // DISABLED: Don't show matched release - matching is broken
-        // const matched = matchedReleases.get(i);
-        // if (matched) {
-        //   line += `\n   🔗 ${matched.title}`;
-        //   if (matched.price_estimate) line += ` ($${matched.price_estimate})`;
-        // }
+        // Only show matched release if we found a high-confidence local match
+        const matched = matchedReleases.get(i);
+        if (matched && matched.confidence >= 95) {
+          line += `\n   ✅ Found in DB: ${matched.title}`;
+          if (matched.price_estimate) line += ` ($${matched.price_estimate})`;
+        }
         return line;
       }).join('\n');
 
