@@ -31,6 +31,38 @@ export interface LocalSearchResponse {
 }
 
 /**
+ * Extract colors from product text for matching
+ */
+function extractColors(text: string): string[] {
+  const colorKeywords = [
+    'pink', 'pearl pink', 'red', 'blue', 'navy', 'green', 'purple',
+    'black', 'white', 'grey', 'gray', 'yellow', 'orange', 'gold',
+    'silver', 'rose gold', 'coral', 'teal', 'burgundy', 'lavender',
+    'mint', 'sage', 'tie-dye', 'tie dye', 'rainbow', 'pastel'
+  ];
+  const lowerText = text.toLowerCase();
+  return colorKeywords.filter(c => lowerText.includes(c));
+}
+
+/**
+ * Extract character/IP names from product text for matching
+ */
+function extractCharacterIP(text: string): string[] {
+  const characters = [
+    'mickey', 'minnie', 'stitch', 'figment', 'grogu', 'baby yoda',
+    'simba', 'elsa', 'anna', 'moana', 'ariel', 'belle', 'cinderella',
+    'cruella', 'villain', 'princess', 'marvel', 'star wars', 'pixar',
+    'toy story', 'frozen', 'cars', 'coco', 'encanto', 'wish',
+    'haunted mansion', 'tiki', 'orange bird', 'valentines', 'valentine',
+    'winnie', 'pooh', 'tigger', 'eeyore', 'piglet', 'donald', 'goofy',
+    'pluto', 'daisy', 'chip', 'dale', 'tiana', 'jasmine', 'mulan',
+    'pocahontas', 'aurora', 'rapunzel', 'merida', 'maleficent'
+  ];
+  const lowerText = text.toLowerCase();
+  return characters.filter(c => lowerText.includes(c));
+}
+
+/**
  * Search the local database for matching products
  */
 export async function searchLocalDatabase(
@@ -157,7 +189,7 @@ export async function searchLocalDatabase(
 
     return {
       matches: filteredMatches.slice(0, 5),
-      bestMatch: filteredMatches.length > 0 && filteredMatches[0].confidence >= 60
+      bestMatch: filteredMatches.length > 0 && filteredMatches[0].confidence >= 75
         ? filteredMatches[0]
         : null
     };
@@ -253,5 +285,31 @@ function calculateConfidence(
     }
   }
 
-  return Math.min(score, 100);
+  // COLOR MATCHING - Critical for apparel (Spirit Jerseys, etc.)
+  const descColors = extractColors(description.name);
+  const titleColors = extractColors(dbItem.title || '');
+
+  if (descColors.length > 0) {
+    const colorMatch = descColors.some(c => titleColors.includes(c));
+    if (colorMatch) {
+      score += 20; // Bonus for color match
+    } else if (titleColors.length > 0) {
+      score -= 30; // Penalty - they specified color but it's different
+    }
+  }
+
+  // CHARACTER/IP MATCHING - Critical to avoid wrong product
+  const descChars = extractCharacterIP(description.name);
+  const titleChars = extractCharacterIP(dbItem.title || '');
+
+  if (descChars.length > 0) {
+    const charMatch = descChars.some(c => titleChars.includes(c));
+    if (charMatch) {
+      score += 25; // Bonus for character match
+    } else if (titleChars.length > 0) {
+      score -= 35; // Penalty - they specified character but it's different
+    }
+  }
+
+  return Math.max(0, Math.min(score, 100));
 }
