@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { RESORTS } from '@/lib/park-shopping-config';
+import { RESORTS, getAllLocations } from '@/lib/park-shopping-config';
 
 export async function GET() {
   try {
@@ -23,8 +23,8 @@ export async function GET() {
     // Initialize counts for all resorts
     Object.keys(RESORTS).forEach(resort => {
       counts[resort] = { total: 0, parks: {} };
-      RESORTS[resort].parks.forEach(park => {
-        counts[resort].parks[park.dbValue] = 0;
+      getAllLocations(resort).forEach(location => {
+        counts[resort].parks[location.dbValue] = 0;
       });
     });
 
