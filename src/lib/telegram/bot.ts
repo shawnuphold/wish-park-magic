@@ -23,6 +23,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { uploadBufferToFolder } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
 import { lookupProduct } from '@/lib/ai/productLookup';
+import { analyzeImage, extractParkContext, type VisionAnalysisResult } from '@/lib/ai/googleVision';
 
 const log = createLogger('TelegramBot');
 
@@ -117,7 +118,7 @@ async function getStoreLocations(): Promise<string> {
 }
 
 /**
- * Analyze multiple screenshots using Claude Vision
+ * Analyze multiple screenshots using Claude Vision with Google Vision context
  */
 async function analyzeScreenshots(
   images: Array<{ base64: string }>,
@@ -127,6 +128,50 @@ async function analyzeScreenshots(
   const storeList = await getStoreLocations();
 
   try {
+    // Run Google Vision on first image for product identification context
+    let visionContext = '';
+    let visionResult: VisionAnalysisResult | null = null;
+
+    try {
+      visionResult = await analyzeImage(images[0].base64);
+      const parkContext = extractParkContext(visionResult);
+
+      if (visionResult.webEntities.length > 0 || visionResult.matchingPages.length > 0) {
+        log.info('Google Vision analysis', {
+          webEntities: visionResult.webEntities.slice(0, 5).map(e => e.description),
+          matchingPages: visionResult.matchingPages.length,
+          labels: visionResult.labels.slice(0, 5).map(l => l.description),
+          detectedPark: parkContext.park,
+          productType: parkContext.productType
+        });
+
+        // Build context for Claude
+        const webEntitiesText = visionResult.webEntities
+          .slice(0, 8)
+          .map(e => e.description)
+          .filter(Boolean)
+          .join(', ');
+
+        const matchingPageTitles = visionResult.matchingPages
+          .slice(0, 3)
+          .map(p => p.pageTitle)
+          .filter(Boolean)
+          .join('; ');
+
+        visionContext = `
+GOOGLE VISION PRODUCT IDENTIFICATION:
+- Web entities detected: ${webEntitiesText || 'none'}
+- Matching product pages: ${matchingPageTitles || 'none'}
+- Product type detected: ${parkContext.productType || 'unknown'}
+- Park detected: ${parkContext.park || 'unknown'}
+- Characters: ${parkContext.characters.join(', ') || 'none'}
+
+USE THIS INFORMATION to identify the correct product name.`;
+      }
+    } catch (visionError) {
+      log.warn('Google Vision failed, continuing with Claude only', visionError);
+    }
+
     // Build content array with all images
     const content: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [];
 
@@ -143,29 +188,44 @@ async function analyzeScreenshots(
 
     content.push({
       type: 'text',
-      text: `Analyze ${images.length === 1 ? 'this screenshot' : `these ${images.length} screenshots`} of Facebook messages/posts.
+      text: `Analyze ${images.length === 1 ? 'this image' : `these ${images.length} images`}.
 ${caption ? `\nCustomer message: "${caption}"` : ''}
+${visionContext}
 
-Extract ALL items being requested. ${images.length > 1 ? 'Each image may show a different item.' : 'The customer may be requesting multiple items.'}
+CRITICAL RULES FOR PRODUCT IDENTIFICATION:
+1. A SINGLE PRODUCT = 1 ITEM, regardless of components
+   - Charm bracelet with 5 charms = 1 item (the bracelet)
+   - Necklace with pendant = 1 item (the necklace)
+   - Spirit jersey = 1 item (not sleeves + body + collar)
+   - Ears with bow = 1 item (the ears)
 
-For each item, extract:
-- productName: Specific product name (e.g., "Mickey Mouse Spirit Jersey" not just "spirit jersey")
+2. Use the COMPLETE product name from packaging, tags, or Google Vision results
+   - "Disney Parks Cinderella Castle Charm Bracelet" NOT "castle charm, carriage charm, slipper charm"
+   - "Mickey Mouse Loungefly Mini Backpack" NOT "backpack with ears"
+
+3. ONLY list multiple items if customer explicitly requests separate products
+   - "I want the bracelet and the matching earrings" = 2 items
+   - "I want this bracelet" (shows bracelet with charms) = 1 item
+
+First, determine: Is this a CUSTOMER CONVERSATION (Facebook message) or a PRODUCT PHOTO?
+
+If CUSTOMER CONVERSATION:
+- Extract the customer's Facebook name
+- Extract what complete products they're asking for
+
+If PRODUCT PHOTO (no customer conversation visible):
+- Set isValidRequest to false (will trigger product lookup instead)
+
+For each item:
+- productName: Full product name (e.g., "Mickey Mouse Spirit Jersey" not just "spirit jersey")
 - size: Size if mentioned (S, M, L, XL, etc.) or null
-- category: One of: loungefly, ears, spirit_jersey, popcorn_bucket, pins, plush, apparel, drinkware, collectible, home_decor, toys, jewelry, other
-- park: disney, universal, or seaworld if identifiable
-- suggestedStore: Best store to find this item (from list below)
-- imageIndex: Which image this item is from (0-based index)
+- category: loungefly, ears, spirit_jersey, popcorn_bucket, pins, plush, apparel, drinkware, collectible, home_decor, toys, jewelry, other
+- park: disney, universal, or seaworld
+- suggestedStore: Best store from list below
+- imageIndex: Which image (0-based)
 
 Available stores:
 ${storeList}
-
-Match stores based on:
-- Character/franchise themes (Haunted Mansion → Memento Mori, Star Wars → Galaxy's Edge shops)
-- Product categories (Loungefly → boutiques, ears → Castle Couture)
-- Park-specific items (EPCOT merch → Creations Shop)
-- General merchandise → Emporium, World of Disney
-
-If this is NOT a product request (casual chat, meme, unrelated), set isValidRequest to false.
 
 Return ONLY valid JSON:
 {
@@ -173,9 +233,9 @@ Return ONLY valid JSON:
   "customerName": "Customer's Facebook Name",
   "items": [
     {
-      "productName": "Product Name",
+      "productName": "Complete Product Name",
       "size": "M" or null,
-      "category": "apparel",
+      "category": "jewelry",
       "park": "disney",
       "suggestedStore": { "store_name": "Store Name", "land": "Land Name" },
       "imageIndex": 0

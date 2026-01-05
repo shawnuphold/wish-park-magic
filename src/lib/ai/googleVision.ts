@@ -292,6 +292,7 @@ function detectThemes(analysis: VisionAnalysisResult): string[] {
 
 function detectProductType(analysis: VisionAnalysisResult): string | null {
   const productTypes: Record<string, string[]> = {
+    'jewelry': ['bracelet', 'charm bracelet', 'necklace', 'earrings', 'ring', 'jewelry', 'charm', 'pendant'],
     'popcorn_bucket': ['popcorn bucket', 'popcorn'],
     'sipper': ['sipper', 'cup', 'tumbler', 'drink container'],
     'ears': ['ears', 'ear headband', 'mickey ears', 'minnie ears'],
