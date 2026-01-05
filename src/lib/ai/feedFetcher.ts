@@ -621,8 +621,15 @@ export async function processAllSources(): Promise<{
 }> {
   const supabase = getSupabaseAdmin();
 
-  // Acquire processing lock to prevent concurrent runs
+  // Clean up expired locks before attempting to acquire (prevents stuck locks)
   const lockName = 'feed_processing';
+  await supabase
+    .from('feed_processing_locks')
+    .delete()
+    .eq('lock_name', lockName)
+    .lt('expires_at', new Date().toISOString());
+
+  // Acquire processing lock to prevent concurrent runs
   const { data: lockAcquired, error: lockError } = await supabase
     .rpc('acquire_feed_lock', { p_lock_name: lockName, p_timeout_minutes: 30 });
 
