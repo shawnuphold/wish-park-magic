@@ -183,9 +183,49 @@ export async function searchGoogleLens(imageUrl: string): Promise<GoogleLensResu
 /**
  * Find the best Disney-related match from Lens results
  * Prioritizes Disney blogs, ShopDisney, and known theme park sources
+ * Returns null if no suitable match found (better than garbage)
  */
 export function findDisneyMatch(matches: LensMatch[]): LensMatch | null {
   if (matches.length === 0) return null;
+
+  // Log top 5 matches for debugging
+  console.log('[Lens] Top 5 matches:');
+  matches.slice(0, 5).forEach((m, i) => {
+    console.log(`  ${i + 1}. "${m.title}" (${m.source}) - ${m.link?.substring(0, 50)}`);
+  });
+
+  // Filter out garbage results first
+  const filteredMatches = matches.filter(m => {
+    const title = m.title?.toLowerCase() || '';
+    const source = m.source?.toLowerCase() || '';
+    const link = m.link?.toLowerCase() || '';
+
+    // Skip obvious garbage
+    if (title.includes('scam') || title.includes('warning') || title.includes('parking')) {
+      return false;
+    }
+
+    // Skip social media profiles (unless title looks like a product)
+    if (source === 'instagram' || source === 'facebook' || source === 'twitter' || source === 'tiktok') {
+      const productWords = ['jersey', 'fleece', 'jacket', 'shirt', 'hoodie', 'sweater', 'ears', 'bag', 'backpack', 'mug', 'pin', 'plush', 'disney', 'loungefly'];
+      if (!productWords.some(pw => title.includes(pw))) {
+        return false;
+      }
+    }
+
+    // Skip if title looks like a person's name (no product words)
+    if (title.split(' ').length <= 3 && !title.includes('disney') && !title.includes('jersey')) {
+      // Could be "John Smith" or "Liana Satenstein" - skip unless from commerce site
+      const commerceSites = ['amazon', 'ebay', 'mercari', 'poshmark', 'etsy', 'shop', 'store'];
+      if (!commerceSites.some(s => link.includes(s))) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  console.log(`[Lens] After filtering: ${filteredMatches.length} of ${matches.length} matches remain`);
 
   // Priority 1: Disney blog sources (most likely to have accurate names)
   const disneyBlogs = [
@@ -196,54 +236,71 @@ export function findDisneyMatch(matches: LensMatch[]): LensMatch | null {
     'allears.net',
     'themeparkinsider.com',
     'wdwinfo.com',
-    'orlandoparksnews.com'
+    'orlandoparksnews.com',
+    'chipandco.com'
   ];
 
-  const blogMatch = matches.find(m =>
+  const blogMatch = filteredMatches.find(m =>
     disneyBlogs.some(domain => m.link?.includes(domain))
   );
   if (blogMatch) {
-    console.log('[Lens] Found Disney blog match:', blogMatch.source);
+    console.log('[Lens] Found Disney blog match:', blogMatch.title, '-', blogMatch.source);
     return blogMatch;
   }
 
   // Priority 2: ShopDisney (official source)
-  const shopDisneyMatch = matches.find(m =>
+  const shopDisneyMatch = filteredMatches.find(m =>
     m.link?.includes('shopdisney.com')
   );
   if (shopDisneyMatch) {
-    console.log('[Lens] Found ShopDisney match');
+    console.log('[Lens] Found ShopDisney match:', shopDisneyMatch.title);
     return shopDisneyMatch;
   }
 
-  // Priority 3: Any Disney-related title
-  const disneyMatch = matches.find(m =>
-    m.title?.toLowerCase().includes('disney') ||
-    m.title?.toLowerCase().includes('spirit jersey') ||
-    m.title?.toLowerCase().includes('magic kingdom') ||
-    m.title?.toLowerCase().includes('epcot') ||
-    m.title?.toLowerCase().includes('mickey') ||
-    m.title?.toLowerCase().includes('minnie')
-  );
+  // Priority 3: Any Disney-related title keywords
+  const disneyKeywords = [
+    'disney', 'spirit jersey', 'magic kingdom', 'epcot', 'animal kingdom',
+    'hollywood studios', 'mickey', 'minnie', 'walt disney', 'wdw',
+    'loungefly', 'ears headband', 'park exclusive'
+  ];
+
+  const disneyMatch = filteredMatches.find(m => {
+    const title = m.title?.toLowerCase() || '';
+    return disneyKeywords.some(kw => title.includes(kw));
+  });
   if (disneyMatch) {
-    console.log('[Lens] Found Disney-titled match');
+    console.log('[Lens] Found Disney keyword match:', disneyMatch.title);
     return disneyMatch;
   }
 
-  // Priority 4: eBay/Mercari listings (often have accurate names)
-  const resaleMatch = matches.find(m =>
-    m.link?.includes('ebay.com') ||
-    m.link?.includes('mercari.com') ||
-    m.link?.includes('poshmark.com')
+  // Priority 4: E-commerce sites (likely product listings)
+  const commerceSites = ['amazon.com', 'ebay.com', 'mercari.com', 'poshmark.com', 'etsy.com'];
+  const commerceMatch = filteredMatches.find(m =>
+    commerceSites.some(site => m.link?.includes(site))
   );
-  if (resaleMatch) {
-    console.log('[Lens] Found resale listing match');
-    return resaleMatch;
+  if (commerceMatch) {
+    console.log('[Lens] Found commerce match:', commerceMatch.title, '-', commerceMatch.source);
+    return commerceMatch;
   }
 
-  // Fallback: first result
-  console.log('[Lens] Using first match as fallback');
-  return matches[0];
+  // Priority 5: Any match with product-like words in title
+  const productWords = ['jersey', 'fleece', 'jacket', 'hoodie', 'sweater', 'shirt', 'dress',
+    'bag', 'backpack', 'tote', 'ears', 'headband', 'mug', 'tumbler', 'cup',
+    'pin', 'plush', 'toy', 'figure', 'ornament', 'keychain'];
+
+  const productMatch = filteredMatches.find(m => {
+    const title = m.title?.toLowerCase() || '';
+    return productWords.some(pw => title.includes(pw));
+  });
+  if (productMatch) {
+    console.log('[Lens] Found product word match:', productMatch.title);
+    return productMatch;
+  }
+
+  // NO FALLBACK - return null if nothing good found
+  // Better to use Claude's description than garbage
+  console.log('[Lens] No suitable match found in', matches.length, 'results - returning null');
+  return null;
 }
 
 /**
