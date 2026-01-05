@@ -360,19 +360,21 @@ export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
     for (const domain of disneyBlogs) {
       if (link.includes(domain)) {
         // Check if this looks like an actual article URL (not homepage/category)
-        // Article URLs typically have year patterns like /2024/ or /2025/
+        // Article URLs typically have year patterns like /2024/, /2025/, /2026/
         // or paths like /news/, /article/, /merchandise/
-        const isArticleUrl =
-          /\/20\d\d\//.test(link) ||  // Year pattern like /2024/ or /2025/
+        const hasYearInUrl = /\/\d{4}\//.test(link);  // Matches any 4-digit year: /2024/, /2025/, /2026/, etc.
+        const hasArticlePath =
           link.includes('/news/') ||
           link.includes('/article/') ||
           link.includes('/merchandise/') ||
           link.includes('/photos-') ||
           link.includes('/review-') ||
           link.includes('/first-look-') ||
-          link.includes('/new-') ||
-          // Most blog URLs have 4+ path segments for articles
-          (link.split('/').filter(s => s.length > 0).length >= 4);
+          link.includes('/new-');
+        // Most blog URLs have 4+ path segments for articles
+        const hasEnoughPathSegments = link.split('/').filter(s => s.length > 0).length >= 4;
+
+        const isArticleUrl = hasYearInUrl || hasArticlePath || hasEnoughPathSegments;
 
         // Skip if it's just the homepage or a very short URL
         const isHomepage = link.replace(/\/$/, '').endsWith(domain) ||
