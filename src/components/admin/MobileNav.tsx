@@ -212,13 +212,15 @@ export function QuickActionFab() {
     <Link
       href="/admin/requests/new"
       className={cn(
-        'fixed bottom-20 right-4 z-30 md:hidden',
+        // Position above nav bar (h-16 = 64px) + safe area (~34px) + gap
+        'fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-50 md:hidden',
         'w-14 h-14 rounded-full',
-        'bg-gold text-midnight shadow-lg',
+        'bg-gold text-midnight',
         'flex items-center justify-center',
         'touch-manipulation active:scale-95',
         'transition-transform',
-        'hover:shadow-gold'
+        // Subtle shadow that won't look like a black circle
+        'shadow-[0_2px_8px_rgba(0,0,0,0.15)]'
       )}
     >
       <Plus className="w-6 h-6" />
