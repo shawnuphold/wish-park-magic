@@ -37,6 +37,35 @@ function normalize(str: string): string {
 }
 
 /**
+ * Extract colors from product text
+ */
+function extractColors(text: string): string[] {
+  const colorKeywords = [
+    'pink', 'pearl pink', 'red', 'blue', 'navy', 'green', 'purple',
+    'black', 'white', 'grey', 'gray', 'yellow', 'orange', 'gold',
+    'silver', 'rose gold', 'coral', 'teal', 'burgundy', 'lavender',
+    'mint', 'sage', 'tie-dye', 'tie dye', 'rainbow', 'pastel', 'sherpa'
+  ];
+  const lowerText = text.toLowerCase();
+  return colorKeywords.filter(c => lowerText.includes(c));
+}
+
+/**
+ * Extract character/event keywords from product text
+ */
+function extractKeywords(text: string): string[] {
+  const keywords = [
+    'mickey', 'minnie', 'stitch', 'figment', 'grogu', 'valentines', 'valentine',
+    'christmas', 'halloween', 'epcot', 'magic kingdom', 'hollywood studios',
+    'animal kingdom', 'cruella', 'villain', 'princess', 'star wars', 'marvel',
+    'toy story', 'frozen', 'coco', 'encanto', 'haunted mansion', 'tiki',
+    'orange bird', 'simba', 'ariel', 'belle', 'cinderella', 'elsa', 'moana'
+  ];
+  const lowerText = text.toLowerCase();
+  return keywords.filter(k => lowerText.includes(k));
+}
+
+/**
  * Extract meaningful words from a string (filter out common words)
  */
 function extractWords(str: string): string[] {
@@ -155,10 +184,35 @@ export async function findMatchingRelease(
       confidence = 0.4 + (overlap - 0.4) * 0.5;
     }
 
+    // COLOR PENALTY: If search has a color but release has a DIFFERENT color, heavy penalty
+    const searchColors = extractColors(productName);
+    const releaseColors = extractColors(releaseTitle);
+    if (searchColors.length > 0 && releaseColors.length > 0) {
+      const colorMatch = searchColors.some(c => releaseColors.includes(c));
+      if (!colorMatch) {
+        // Different colors = likely wrong product (e.g., "Pink" vs "Valentine's")
+        confidence -= 0.4;
+      }
+    }
+
+    // KEYWORD PENALTY: If search has specific character/event but release has DIFFERENT one
+    const searchKeywords = extractKeywords(productName);
+    const releaseKeywords = extractKeywords(releaseTitle);
+    if (searchKeywords.length > 0 && releaseKeywords.length > 0) {
+      const keywordMatch = searchKeywords.some(k => releaseKeywords.includes(k));
+      if (!keywordMatch) {
+        // Different characters/events = wrong product
+        confidence -= 0.4;
+      }
+    }
+
     // Boost confidence for limited editions (they're more distinctive)
     if (release.is_limited_edition && confidence > 0.3) {
       confidence = Math.min(confidence + 0.05, 0.95);
     }
+
+    // Ensure confidence is within bounds
+    confidence = Math.max(0, Math.min(confidence, 1.0));
 
     if (confidence > bestConfidence) {
       bestConfidence = confidence;
@@ -173,13 +227,19 @@ export async function findMatchingRelease(
     }
   }
 
-  // Only return a match if confidence is above threshold
-  if (bestMatch && bestConfidence >= 0.4) {
+  // Only return a match if confidence is above threshold (0.9 = very high confidence only)
+  // This prevents wrong matches like "Pink Spirit Jersey" → "Valentine's Spirit Jersey"
+  if (bestMatch && bestConfidence >= 0.9) {
+    console.log(`[MatchRelease] High confidence match: "${productName}" → "${bestMatch.title}" (${Math.round(bestConfidence * 100)}%)`);
     return {
       found: true,
       release: bestMatch,
       confidence: Math.round(bestConfidence * 100) / 100
     };
+  }
+
+  if (bestMatch && bestConfidence >= 0.5) {
+    console.log(`[MatchRelease] Low confidence match rejected: "${productName}" → "${bestMatch.title}" (${Math.round(bestConfidence * 100)}%)`);
   }
 
   return { found: false, confidence: 0 };
