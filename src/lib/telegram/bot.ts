@@ -22,6 +22,7 @@ import { findMatchingRelease } from '../releases/matchRelease';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { uploadBufferToFolder } from '@/lib/s3';
 import { createLogger } from '@/lib/logger';
+import { lookupProduct } from '@/lib/ai/productLookup';
 
 const log = createLogger('TelegramBot');
 
@@ -294,7 +295,7 @@ async function createRequestFromState(
         park: item.park || 'disney',
         quantity: 1,
         notes: item.size ? `Size: ${item.size}` : null,
-        reference_image_url: itemImageUrl || null,
+        reference_images: itemImageUrl ? [itemImageUrl] : [],
         store_name: item.suggestedStore?.store_name || null,
         land_name: item.suggestedStore?.land || null,
         estimated_price: matchedRelease?.price_estimate || null
@@ -407,10 +408,41 @@ export function createTelegramBot(): Telegraf {
       const analysis = await analyzeScreenshots(images, caption);
 
       if (!analysis.isValidRequest || analysis.items.length === 0) {
-        await ctx.reply(
-          'Could not identify a product request in this image.\n' +
-          'Please upload a screenshot of a customer requesting an item.'
-        );
+        // Not a FB screenshot - try product lookup instead
+        await ctx.reply('Not a customer message. Running product identification...');
+
+        try {
+          // Run product lookup on first image
+          const imageBase64 = `data:image/jpeg;base64,${images[0].base64}`;
+          const result = await lookupProduct(imageBase64);
+
+          if (result.product) {
+            const lines = [`🔍 Product Identified:`, `Name: ${result.product.name}`];
+            if (result.product.price) lines.push(`Price: $${result.product.price}`);
+            if (result.product.park) lines.push(`Park: ${result.product.park}`);
+            if (result.product.store) lines.push(`Store: ${result.product.store}`);
+            if (result.product.land) lines.push(`Land: ${result.product.land}`);
+            lines.push(`Confidence: ${result.confidence}%`);
+            lines.push(`Source: ${result.product.sourceType.replace(/_/g, ' ')}`);
+
+            if (result.product.characters.length > 0) {
+              lines.push(`Characters: ${result.product.characters.join(', ')}`);
+            }
+
+            await ctx.reply(lines.join('\n'));
+          } else {
+            await ctx.reply(
+              'Could not identify this product.\n' +
+              'Try uploading a clearer photo or a customer screenshot.'
+            );
+          }
+        } catch (lookupError) {
+          log.error('Product lookup failed', lookupError);
+          await ctx.reply(
+            'Could not identify a product request in this image.\n' +
+            'Please upload a screenshot of a customer requesting an item.'
+          );
+        }
         return;
       }
 
