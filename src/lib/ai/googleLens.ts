@@ -150,11 +150,11 @@ export async function searchGoogleLens(imageUrl: string): Promise<GoogleLensResu
     const matches = data.visual_matches || [];
     console.log(`[Lens] Found ${matches.length} visual matches`);
 
-    // Log first few matches for debugging
+    // Log first few matches with URLS for debugging
     if (matches.length > 0) {
-      console.log('[Lens] Top matches:');
-      matches.slice(0, 3).forEach((m: any, i: number) => {
-        console.log(`  ${i + 1}. ${m.title} (${m.source})`);
+      console.log('[Lens] Top 5 matches with URLs:');
+      matches.slice(0, 5).forEach((m: any, i: number) => {
+        console.log(`  ${i + 1}. ${m.source || 'unknown'}: ${m.link?.substring(0, 100) || 'NO LINK'}`);
       });
     }
 
@@ -353,12 +353,24 @@ export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
     'insidethemagic.net'
   ];
 
+  // Debug: Log first 10 matches to see what URLs we're getting
+  console.log('[Lens] Searching for Disney article URLs in', matches.length, 'matches');
+  console.log('[Lens] First 10 match URLs:');
+  matches.slice(0, 10).forEach((m, i) => {
+    const link = m.link || 'NO LINK';
+    const source = m.source || 'unknown';
+    const isDomainMatch = disneyBlogs.some(d => link.includes(d));
+    console.log(`  ${i + 1}. [${isDomainMatch ? 'DISNEY' : 'other'}] ${source}: ${link.substring(0, 100)}`);
+  });
+
   // Find first match from a Disney blog that looks like an article URL
   for (const match of matches) {
     const link = match.link || '';
 
     for (const domain of disneyBlogs) {
       if (link.includes(domain)) {
+        console.log(`[Lens] Found Disney domain match: ${domain} in ${link}`);
+
         // Check if this looks like an actual article URL (not homepage/category)
         // Article URLs typically have year patterns like /2024/, /2025/, /2026/
         // or paths like /news/, /article/, /merchandise/
@@ -372,25 +384,28 @@ export function findDisneyArticleUrl(matches: LensMatch[]): string | null {
           link.includes('/first-look-') ||
           link.includes('/new-');
         // Most blog URLs have 4+ path segments for articles
-        const hasEnoughPathSegments = link.split('/').filter(s => s.length > 0).length >= 4;
+        const pathSegments = link.split('/').filter(s => s.length > 0).length;
+        const hasEnoughPathSegments = pathSegments >= 4;
 
         const isArticleUrl = hasYearInUrl || hasArticlePath || hasEnoughPathSegments;
 
         // Skip if it's just the homepage or a very short URL
         const isHomepage = link.replace(/\/$/, '').endsWith(domain) ||
-          link.split('/').filter(s => s.length > 0).length <= 2;
+          pathSegments <= 2;
+
+        console.log(`[Lens] URL analysis: year=${hasYearInUrl}, articlePath=${hasArticlePath}, segments=${pathSegments}, isArticle=${isArticleUrl}, isHomepage=${isHomepage}`);
 
         if (isArticleUrl && !isHomepage) {
-          console.log(`[Lens] Found Disney article: ${link}`);
+          console.log(`[Lens] ✓ Valid Disney article found: ${link}`);
           return link;
         } else {
-          console.log(`[Lens] Skipping non-article URL: ${link}`);
+          console.log(`[Lens] ✗ Rejected (homepage or not article pattern): ${link}`);
         }
       }
     }
   }
 
-  console.log('[Lens] No Disney blog article found in results');
+  console.log('[Lens] No Disney blog article found in', matches.length, 'results');
   return null;
 }
 
