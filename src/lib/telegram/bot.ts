@@ -530,10 +530,16 @@ export function createTelegramBot(): Telegraf {
       await ctx.reply('🔍 Identifying product...');
 
       const imageBuffer = Buffer.from(imageBase64, 'base64');
-      const s3Url = await uploadBufferForExternalAccess(imageBuffer, 'temp-lookup', 'image/jpeg');
+
+      // Upload to temp folder with pre-signed URL for Google Lens (external access)
+      const lensUrl = await uploadBufferForExternalAccess(imageBuffer, 'temp-lookup', 'image/jpeg');
+
+      // Also upload to permanent storage for reference_images (permanent URL)
+      const permanentUrl = await uploadBufferToFolder(imageBuffer, 'reference-images', 'image/jpeg');
+      log.info('Uploaded product image', { lensUrl: lensUrl.substring(0, 50), permanentUrl });
 
       log.info('Running Lens on product image...');
-      const lensResult = await searchGoogleLens(s3Url);
+      const lensResult = await searchGoogleLens(lensUrl);
 
       let productName = 'Unknown product';
       let price: number | null = null;
@@ -571,7 +577,7 @@ export function createTelegramBot(): Telegraf {
         pending.items[itemIndex].enhancedName = productName;
         pending.items[itemIndex].price = price || undefined;
         pending.items[itemIndex].store = store || undefined;
-        pending.items[itemIndex].imageUrl = s3Url;
+        pending.items[itemIndex].imageUrl = permanentUrl;  // Use permanent URL for storage
       } else {
         // Add as new item
         pending.items.push({
@@ -579,7 +585,7 @@ export function createTelegramBot(): Telegraf {
           enhancedName: productName,
           price: price || undefined,
           store: store || undefined,
-          imageUrl: s3Url
+          imageUrl: permanentUrl  // Use permanent URL for storage
         });
       }
 
