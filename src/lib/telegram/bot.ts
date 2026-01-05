@@ -642,18 +642,25 @@ export function createTelegramBot(): Telegraf {
       const supabase = getSupabaseAdmin();
 
       try {
-        // Create customer with name only
+        // Generate a placeholder email (database requires non-null email for now)
+        // Format: facebook_name_timestamp@placeholder.enchantedparkpickups.com
+        const timestamp = Date.now();
+        const safeName = customerName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
+        const placeholderEmail = `${safeName}_${timestamp}@placeholder.enchantedparkpickups.com`;
+
+        // Create customer with placeholder email
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
           .insert({
             name: customerName,
             facebook_name: customerName,
-            email: null,
+            email: placeholderEmail,
           })
           .select()
           .single();
 
         if (customerError || !newCustomer) {
+          log.error('Failed to create customer', customerError);
           await ctx.reply('Failed to create customer. Please try again.');
           conversationState.delete(ctx.from.id);
           await ctx.answerCbQuery();
