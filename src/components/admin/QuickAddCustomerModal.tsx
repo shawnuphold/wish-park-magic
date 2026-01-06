@@ -36,8 +36,8 @@ export function QuickAddCustomerModal({ open, onOpenChange, onCustomerCreated }:
 
     setSubmitting(true);
     try {
-      // Generate placeholder email if none provided
-      const customerEmail = email.trim() || `customer.${Date.now()}@placeholder.local`;
+      // Use provided email or NULL (no placeholder needed)
+      const customerEmail = email.trim() || null;
 
       // Create customer
       // @ts-expect-error - customers table may not be in generated types

@@ -943,7 +943,7 @@ export default function RequestDetailPage() {
             <Link href={`/admin/customers/${request.customer.id}`} className="hover:underline">
               <p className="font-medium">{request.customer.name}</p>
             </Link>
-            <p className="text-sm text-muted-foreground">{request.customer.email}</p>
+            <p className="text-sm text-muted-foreground">{request.customer.email || 'No email'}</p>
             {request.customer.phone && (
               <p className="text-sm text-muted-foreground">{request.customer.phone}</p>
             )}

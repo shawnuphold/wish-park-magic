@@ -153,9 +153,13 @@ export default function CustomerDetailPage() {
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2">
               <Mail className="w-4 h-4 text-muted-foreground" />
-              <a href={`mailto:${customer.email}`} className="text-sm hover:underline">
-                {customer.email}
-              </a>
+              {customer.email ? (
+                <a href={`mailto:${customer.email}`} className="text-sm hover:underline">
+                  {customer.email}
+                </a>
+              ) : (
+                <span className="text-sm text-muted-foreground">No email</span>
+              )}
             </div>
             {customer.phone && (
               <div className="flex items-center gap-2">

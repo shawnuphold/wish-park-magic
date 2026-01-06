@@ -248,19 +248,28 @@ export default function CustomersPage() {
         errors: [],
       };
 
-      const existingEmails = new Set(customers.map(c => c.email.toLowerCase()));
+      // Only track non-null, non-placeholder emails for duplicate detection
+      const existingEmails = new Set(
+        customers
+          .filter(c => c.email && !c.email.includes('placeholder') && !c.email.includes('noemail'))
+          .map(c => c.email!.toLowerCase())
+      );
 
       for (const row of rows) {
         const customer = mapToCustomer(row);
 
-        if (!customer.name || !customer.email) {
+        // Only name is required, email is optional
+        if (!customer.name) {
           result.skipped++;
           continue;
         }
 
-        if (existingEmails.has(customer.email.toLowerCase())) {
-          result.skipped++;
-          continue;
+        // Only check for duplicates if email is provided and not a placeholder
+        if (customer.email && !customer.email.includes('placeholder') && !customer.email.includes('noemail')) {
+          if (existingEmails.has(customer.email.toLowerCase())) {
+            result.skipped++;
+            continue;
+          }
         }
 
         try {
@@ -271,16 +280,19 @@ export default function CustomersPage() {
           if (error) {
             result.failed++;
             if (result.errors.length < 5) {
-              result.errors.push(`${customer.email}: ${error.message}`);
+              result.errors.push(`${customer.name}: ${error.message}`);
             }
           } else {
             result.success++;
-            existingEmails.add(customer.email.toLowerCase());
+            // Track email for duplicate detection if provided
+            if (customer.email && !customer.email.includes('placeholder')) {
+              existingEmails.add(customer.email.toLowerCase());
+            }
           }
         } catch (err: any) {
           result.failed++;
           if (result.errors.length < 5) {
-            result.errors.push(`${customer.email}: ${err.message}`);
+            result.errors.push(`${customer.name}: ${err.message}`);
           }
         }
       }
@@ -574,16 +586,18 @@ export default function CustomersPage() {
                         </a>
                       </>
                     )}
-                    <a
-                      href={`mailto:${customer.email}`}
-                      className={cn("flex-1", !customer.phone && "max-w-[200px]")}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Button variant="outline" size="sm" className="w-full h-10">
-                        <Mail className="w-4 h-4 mr-2" />
-                        Email
-                      </Button>
-                    </a>
+                    {customer.email && (
+                      <a
+                        href={`mailto:${customer.email}`}
+                        className={cn("flex-1", !customer.phone && "max-w-[200px]")}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button variant="outline" size="sm" className="w-full h-10">
+                          <Mail className="w-4 h-4 mr-2" />
+                          Email
+                        </Button>
+                      </a>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -634,10 +648,14 @@ export default function CustomersPage() {
                       </td>
                       <td className="p-4">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-1 text-sm">
-                            <Mail className="w-3 h-3 text-muted-foreground" />
-                            {customer.email}
-                          </div>
+                          {customer.email ? (
+                            <div className="flex items-center gap-1 text-sm">
+                              <Mail className="w-3 h-3 text-muted-foreground" />
+                              {customer.email}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No email</span>
+                          )}
                           {customer.phone && (
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Phone className="w-3 h-3" />
@@ -769,7 +787,7 @@ export default function CustomersPage() {
               )}
 
               <p className="text-sm text-muted-foreground">
-                Skipped rows are duplicates or missing required fields (name/email).
+                Skipped rows are duplicates or missing required name field.
               </p>
 
               <Button

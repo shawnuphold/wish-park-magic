@@ -125,7 +125,7 @@ export async function getEligibleCustomers(): Promise<Customer[]> {
     return [];
   }
 
-  // Filter to only customers with notifications enabled
+  // Filter to only customers with notifications enabled AND valid email
   return (customers || [])
     .map(c => ({
       id: c.id,
@@ -133,7 +133,7 @@ export async function getEligibleCustomers(): Promise<Customer[]> {
       name: c.name,
       notification_preferences: c.notification_preferences as NotificationPreferences | null,
     }))
-    .filter(c => c.notification_preferences?.enabled);
+    .filter(c => c.notification_preferences?.enabled && c.email && !c.email.includes('placeholder'));
 }
 
 /**

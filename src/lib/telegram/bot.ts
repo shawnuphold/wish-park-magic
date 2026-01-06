@@ -800,17 +800,13 @@ export function createTelegramBot(): Telegraf {
       if (pending.customer) {
         customerId = pending.customer.id;
       } else {
-        // Create new customer
-        const timestamp = Date.now();
-        const safeName = pending.customerName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
-        const placeholderEmail = `${safeName}_${timestamp}@placeholder.enchantedparkpickups.com`;
-
+        // Create new customer (email is NULL - no placeholder needed)
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
           .insert({
             name: pending.customerName,
             facebook_name: pending.customerName,
-            email: placeholderEmail,
+            email: null,
           })
           .select()
           .single();
@@ -1011,19 +1007,13 @@ export function createTelegramBot(): Telegraf {
       const supabase = getSupabaseAdmin();
 
       try {
-        // Generate a placeholder email (database requires non-null email for now)
-        // Format: facebook_name_timestamp@placeholder.enchantedparkpickups.com
-        const timestamp = Date.now();
-        const safeName = customerName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
-        const placeholderEmail = `${safeName}_${timestamp}@placeholder.enchantedparkpickups.com`;
-
-        // Create customer with placeholder email
+        // Create customer with NULL email (no placeholder needed)
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
           .insert({
             name: customerName,
             facebook_name: customerName,
-            email: placeholderEmail,
+            email: null,
           })
           .select()
           .single();

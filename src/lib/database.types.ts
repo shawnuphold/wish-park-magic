@@ -85,7 +85,7 @@ export interface Database {
       customers: {
         Row: {
           id: string
-          email: string
+          email: string | null
           name: string
           phone: string | null
           address_line1: string | null
@@ -208,11 +208,37 @@ export interface Database {
           notes: string | null
           due_date: string | null
           sent_at: string | null
+          // CC Processing Fee fields
+          cc_fee_enabled: boolean
+          cc_fee_percentage: number
+          cc_fee_manual_amount: number | null
+          cc_fee_amount: number
           created_at: string
           updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['invoices']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['invoices']['Insert']>
+      }
+      invoice_items: {
+        Row: {
+          id: string
+          invoice_id: string
+          name: string
+          description: string | null
+          quantity: number
+          unit_price: number
+          tax_amount: number
+          pickup_fee: number
+          shipping_fee: number
+          custom_fee_label: string | null
+          custom_fee_amount: number
+          notes: string | null
+          request_item_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['invoice_items']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['invoice_items']['Insert']>
       }
       shipments: {
         Row: {
