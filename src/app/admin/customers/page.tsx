@@ -54,7 +54,7 @@ import { cn } from '@/lib/utils';
 
 interface Customer {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   phone: string | null;
   city: string | null;
@@ -371,7 +371,7 @@ export default function CustomersPage() {
   const filteredCustomers = customers.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.email.toLowerCase().includes(search.toLowerCase())
+      (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
   );
 
   if (loading) {
