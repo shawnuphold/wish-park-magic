@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,19 @@ import {
   CheckCircle,
   XCircle,
   Printer,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Park } from '@/lib/database.types';
 
@@ -54,11 +66,14 @@ const statusOptions = [
 
 export default function TripDetailPage() {
   const { id } = useParams() as { id: string };
+  const router = useRouter();
   const { toast } = useToast();
 
   const [trip, setTrip] = useState<ShoppingTrip | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchTrip();
@@ -156,6 +171,44 @@ export default function TripDetailPage() {
       });
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const deleteTrip = async () => {
+    if (!trip) return;
+    setDeleting(true);
+
+    try {
+      // First, unassign any requests from this trip
+      await supabase
+        .from('requests')
+        .update({ shopping_trip_id: null, status: 'approved' })
+        .eq('shopping_trip_id', trip.id);
+
+      // Then delete the trip
+      const { error } = await supabase
+        .from('shopping_trips')
+        .delete()
+        .eq('id', trip.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Trip deleted',
+        description: 'Shopping trip has been deleted successfully',
+      });
+
+      router.push('/admin/trips');
+    } catch (error) {
+      console.error('Error deleting trip:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete trip',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
@@ -312,6 +365,13 @@ export default function TripDetailPage() {
           >
             <Printer className="w-4 h-4 mr-2" />
             Print List
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => setShowDeleteDialog(true)}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
           </Button>
           {trip.status === 'planned' && (
             <Button
@@ -489,6 +549,36 @@ export default function TripDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Shopping Trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this shopping trip. Any assigned requests will be
+              unassigned and returned to &quot;approved&quot; status. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteTrip}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Trip'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

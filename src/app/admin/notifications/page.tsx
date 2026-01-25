@@ -156,6 +156,10 @@ export default function NotificationsPage() {
   const [testTemplate, setTestTemplate] = useState<NotificationTemplate | null>(null);
   const [testSending, setTestSending] = useState(false);
 
+  // History filter state
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<string>('all');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<string>('all');
+
   // Push notification state
   const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
   const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
@@ -508,6 +512,13 @@ export default function NotificationsPage() {
     if (trigger.includes('release')) return AVAILABLE_VARIABLES.new_release;
     return [];
   }
+
+  // Filter logs based on selected filters
+  const filteredLogs = logs.filter((log) => {
+    const matchesType = historyTypeFilter === 'all' || log.type === historyTypeFilter;
+    const matchesStatus = historyStatusFilter === 'all' || log.status === historyStatusFilter;
+    return matchesType && matchesStatus;
+  });
 
   if (loading) {
     return (
@@ -871,17 +882,47 @@ export default function NotificationsPage() {
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Recent Notifications</CardTitle>
-              <CardDescription>Last 50 notifications sent</CardDescription>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <CardTitle>Recent Notifications</CardTitle>
+                  <CardDescription>Last 50 notifications sent</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Select value={historyTypeFilter} onValueChange={setHistoryTypeFilter}>
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="email">Email</SelectItem>
+                      <SelectItem value="sms">SMS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={historyStatusFilter} onValueChange={setHistoryStatusFilter}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="sent">Sent</SelectItem>
+                      <SelectItem value="delivered">Delivered</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              {logs.length === 0 ? (
+              {filteredLogs.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">
-                  No notifications sent yet
+                  {logs.length === 0
+                    ? 'No notifications sent yet'
+                    : 'No notifications match the selected filters'}
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {logs.map((log) => (
+                  {filteredLogs.map((log) => (
                     <div
                       key={log.id}
                       className="flex items-center justify-between p-3 bg-muted rounded-lg"

@@ -289,11 +289,13 @@ export function MultiCustomerScreenshotParser() {
 
         // Create new customer if needed
         if (customer.createNewCustomer) {
+          // Use provided email or NULL (no placeholder needed)
+          const customerEmail = customer.newCustomerEmail?.trim() || null;
           const { data: newCustomer, error: custError } = await supabase
             .from('customers')
             .insert({
               name: customer.customer_name,
-              email: customer.newCustomerEmail || `${customer.customer_name.toLowerCase().replace(/\s+/g, '.')}@pending.local`,
+              email: customerEmail,
             })
             .select('id')
             .single();

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Save, DollarSign, Percent, Building, Truck, CreditCard, Tag, Castle, Download, Smartphone, Share, Search, ChevronRight } from 'lucide-react';
+import { Loader2, Save, DollarSign, Percent, Building, Truck, CreditCard, Tag, Castle, Download, Smartphone, Share, Search, ChevronRight, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
 import { Switch } from '@/components/ui/switch';
@@ -176,6 +176,31 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6">
+        {/* Team & Users */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Team & Users
+            </CardTitle>
+            <CardDescription>Manage admin users and team member access</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href="/admin/settings/users"
+              className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+            >
+              <div>
+                <div className="font-medium">Admin Users</div>
+                <p className="text-sm text-muted-foreground">
+                  Add, edit, or remove team members with admin access
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </Link>
+          </CardContent>
+        </Card>
+
         {/* Business Info */}
         <Card>
           <CardHeader>

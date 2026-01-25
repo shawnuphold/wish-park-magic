@@ -150,6 +150,7 @@ export interface Database {
           land_name: string | null
           reference_url: string | null
           reference_image_url: string | null
+          reference_images: string[]  // Array of reference image URLs
           quantity: number
           estimated_price: number | null
           actual_price: number | null
@@ -179,7 +180,7 @@ export interface Database {
           park: string | null  // Granular park code (disney_mk, disney_epcot, etc.)
           parks: Park[]  // Legacy - array of general parks
           shopper_id: string | null
-          status: 'planning' | 'active' | 'completed' | 'cancelled'
+          status: 'planned' | 'in_progress' | 'completed' | 'cancelled'
           notes: string | null
           started_at: string | null
           completed_at: string | null

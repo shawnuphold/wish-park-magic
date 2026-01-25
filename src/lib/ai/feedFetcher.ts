@@ -136,7 +136,11 @@ export async function scrapeArticle(url: string): Promise<{ content: string; ima
   }
 }
 
-function mapParkLocation(parkLocation: string, sourcePark: Park | 'all'): Park {
+function mapParkLocation(parkLocation: string | null | undefined, sourcePark: Park | 'all'): Park {
+  // Null guard: if parkLocation is null/undefined, fall back to source park or default
+  if (!parkLocation) {
+    return sourcePark !== 'all' ? sourcePark : 'disney';
+  }
   if (parkLocation.startsWith('disney')) return 'disney';
   if (parkLocation.startsWith('universal')) return 'universal';
   if (parkLocation === 'seaworld') return 'seaworld';

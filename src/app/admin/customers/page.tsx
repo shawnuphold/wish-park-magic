@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/integrations/supabase/client';
@@ -47,10 +47,19 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+
+const PAGE_SIZE = 20;
+
+type SortColumn = 'name' | 'email' | 'created_at';
+type SortDirection = 'asc' | 'desc';
 
 interface Customer {
   id: string;
@@ -76,6 +85,11 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -83,15 +97,34 @@ export default function CustomersPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const fetchCustomers = async () => {
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const fetchCustomers = useCallback(async (
+    page: number,
+    searchTerm: string,
+    column: SortColumn,
+    direction: SortDirection
+  ) => {
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase
         .from('customers')
         .select(`
           *,
           requests:requests(id)
-        `)
-        .order('created_at', { ascending: false });
+        `, { count: 'exact' });
+
+      // Server-side search
+      if (searchTerm.trim()) {
+        query = query.or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+      }
+
+      const { data, count, error } = await query
+        .order(column, { ascending: direction === 'asc' })
+        .range(from, to);
 
       if (error) throw error;
 
@@ -101,6 +134,7 @@ export default function CustomersPage() {
           request_count: (c.requests as { id: string }[])?.length || 0,
         })) || []
       );
+      setTotalCount(count || 0);
     } catch (error) {
       console.error('Error fetching customers:', error);
       toast({
@@ -111,11 +145,44 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
+  }, [toast]);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setCurrentPage(1); // Reset to page 1 when search changes
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Fetch customers when page, search, or sort changes
+  useEffect(() => {
+    fetchCustomers(currentPage, debouncedSearch, sortColumn, sortDirection);
+  }, [currentPage, debouncedSearch, sortColumn, sortDirection, fetchCustomers]);
+
+  // Handle column header click for sorting
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New column, default to ascending (except created_at which defaults to desc)
+      setSortColumn(column);
+      setSortDirection(column === 'created_at' ? 'desc' : 'asc');
+    }
+    setCurrentPage(1); // Reset to first page when sorting changes
   };
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  // Render sort icon for column headers
+  const renderSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 ml-1 opacity-50" />;
+    }
+    return sortDirection === 'asc'
+      ? <ArrowUp className="w-4 h-4 ml-1" />
+      : <ArrowDown className="w-4 h-4 ml-1" />;
+  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -300,7 +367,7 @@ export default function CustomersPage() {
       setImportResult(result);
 
       if (result.success > 0) {
-        fetchCustomers();
+        fetchCustomers(currentPage, debouncedSearch, sortColumn, sortDirection);
       }
     } catch (error: any) {
       toast({
@@ -367,12 +434,6 @@ export default function CustomersPage() {
       });
     }
   };
-
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
-  );
 
   if (loading) {
     return (
@@ -471,12 +532,12 @@ export default function CustomersPage() {
           />
         </div>
         <div className="flex items-center justify-between mt-2 lg:hidden">
-          <Badge variant="secondary">{filteredCustomers.length} customers</Badge>
+          <Badge variant="secondary">{totalCount} customers</Badge>
         </div>
       </div>
 
       {/* Customer list */}
-      {filteredCustomers.length === 0 ? (
+      {customers.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No customers found</p>
           <Link href="/admin/customers/new">
@@ -490,7 +551,7 @@ export default function CustomersPage() {
         <>
           {/* Mobile: Card layout */}
           <div className="space-y-3 lg:hidden">
-            {filteredCustomers.map((customer) => (
+            {customers.map((customer) => (
               <Card
                 key={customer.id}
                 className="overflow-hidden active:scale-[0.98] transition-transform cursor-pointer"
@@ -621,16 +682,40 @@ export default function CustomersPage() {
               <table className="w-full">
                 <thead className="border-b bg-muted/50">
                   <tr>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Name</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Contact</th>
+                    <th
+                      className="text-left p-4 font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none"
+                      onClick={() => handleSort('name')}
+                    >
+                      <span className="flex items-center">
+                        Name
+                        {renderSortIcon('name')}
+                      </span>
+                    </th>
+                    <th
+                      className="text-left p-4 font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none"
+                      onClick={() => handleSort('email')}
+                    >
+                      <span className="flex items-center">
+                        Contact
+                        {renderSortIcon('email')}
+                      </span>
+                    </th>
                     <th className="text-left p-4 font-medium text-muted-foreground">Location</th>
                     <th className="text-left p-4 font-medium text-muted-foreground">Requests</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Joined</th>
+                    <th
+                      className="text-left p-4 font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none"
+                      onClick={() => handleSort('created_at')}
+                    >
+                      <span className="flex items-center">
+                        Joined
+                        {renderSortIcon('created_at')}
+                      </span>
+                    </th>
                     <th className="w-[50px] p-4"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredCustomers.map((customer) => (
+                  {customers.map((customer) => (
                     <tr
                       key={customer.id}
                       className="hover:bg-muted/50 cursor-pointer"
@@ -719,6 +804,38 @@ export default function CustomersPage() {
               </table>
             </CardContent>
           </Card>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4">
+              <p className="text-sm text-muted-foreground">
+                Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, totalCount)} of {totalCount} customers
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground px-2">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

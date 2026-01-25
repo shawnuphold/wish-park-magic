@@ -335,8 +335,8 @@ export default function InvoiceDetailPage() {
         toast({ title: 'Item updated' });
       }
 
-      // Refresh to get updated totals
-      await fetchInvoice();
+      // Note: Totals are calculated dynamically from invoice.items in calculateInvoiceTotal()
+      // No need to re-fetch - local state update is sufficient and prevents stale data issues
     } catch (error) {
       console.error('Error saving item:', error);
       toast({

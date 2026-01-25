@@ -724,11 +724,19 @@ export default function ReleasesPage() {
                       onClick={() => router.push(`/admin/releases/${release.id}`)}
                     >
                       {release.image_url && (
-                        <div className="aspect-video bg-muted relative">
+                        <div className="aspect-video bg-muted relative flex items-center justify-center">
                           <img
                             src={release.image_url}
                             alt={release.title}
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const img = e.target as HTMLImageElement;
+                              img.style.display = 'none';
+                              const placeholder = document.createElement('span');
+                              placeholder.className = 'text-muted-foreground text-sm';
+                              placeholder.textContent = 'Image unavailable';
+                              img.parentElement?.appendChild(placeholder);
+                            }}
                           />
                           <div className="absolute top-2 left-2 flex gap-1">
                             <Badge className={getStatusColor(release.status)}>
@@ -870,11 +878,21 @@ export default function ReleasesPage() {
                       onClick={() => router.push(`/admin/releases/${release.id}`)}
                     >
                       {release.image_url && (
-                        <img
-                          src={release.image_url}
-                          alt={release.title}
-                          className="w-24 h-24 object-cover rounded"
-                        />
+                        <div className="w-24 h-24 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                          <img
+                            src={release.image_url}
+                            alt={release.title}
+                            className="w-full h-full object-cover rounded"
+                            onError={(e) => {
+                              const img = e.target as HTMLImageElement;
+                              img.style.display = 'none';
+                              const placeholder = document.createElement('span');
+                              placeholder.className = 'text-muted-foreground text-xs text-center';
+                              placeholder.textContent = 'No image';
+                              img.parentElement?.appendChild(placeholder);
+                            }}
+                          />
+                        </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-4">

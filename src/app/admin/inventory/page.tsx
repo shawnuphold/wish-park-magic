@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -13,8 +15,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Search, Filter, ShoppingBag, DollarSign, Package } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Plus, Search, Filter, ShoppingBag, DollarSign, Package, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import type { Park, ItemCategory } from '@/lib/database.types';
+
+const parkOptions: { value: Park; label: string }[] = [
+  { value: 'disney', label: 'Disney' },
+  { value: 'universal', label: 'Universal' },
+  { value: 'seaworld', label: 'SeaWorld' },
+];
+
+const categoryOptions: { value: ItemCategory; label: string }[] = [
+  { value: 'loungefly', label: 'Loungefly' },
+  { value: 'ears', label: 'Ears' },
+  { value: 'spirit_jersey', label: 'Spirit Jersey' },
+  { value: 'popcorn_bucket', label: 'Popcorn Bucket' },
+  { value: 'pins', label: 'Pins' },
+  { value: 'plush', label: 'Plush' },
+  { value: 'apparel', label: 'Apparel' },
+  { value: 'drinkware', label: 'Drinkware' },
+  { value: 'collectible', label: 'Collectible' },
+  { value: 'home_decor', label: 'Home Decor' },
+  { value: 'toys', label: 'Toys' },
+  { value: 'jewelry', label: 'Jewelry' },
+  { value: 'other', label: 'Other' },
+];
 
 interface InventoryItem {
   id: string;
@@ -37,11 +70,26 @@ const statusOptions = [
   { value: 'sold', label: 'Sold' },
 ];
 
+const initialFormState = {
+  name: '',
+  description: '',
+  park: '' as Park | '',
+  category: '' as ItemCategory | '',
+  original_price: '',
+  selling_price: '',
+  quantity: '1',
+  image_url: '',
+};
+
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState(initialFormState);
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchInventory = async () => {
@@ -95,6 +143,65 @@ export default function InventoryPage() {
       .reduce((sum, i) => sum + i.selling_price * i.quantity, 0),
   };
 
+  const handleAddItem = async () => {
+    // Validate required fields
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' });
+      return;
+    }
+    if (!formData.park) {
+      toast({ title: 'Error', description: 'Park is required', variant: 'destructive' });
+      return;
+    }
+    if (!formData.category) {
+      toast({ title: 'Error', description: 'Category is required', variant: 'destructive' });
+      return;
+    }
+    if (!formData.original_price || parseFloat(formData.original_price) < 0) {
+      toast({ title: 'Error', description: 'Valid purchase price is required', variant: 'destructive' });
+      return;
+    }
+    if (!formData.selling_price || parseFloat(formData.selling_price) < 0) {
+      toast({ title: 'Error', description: 'Valid selling price is required', variant: 'destructive' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from('unclaimed_inventory')
+        .insert({
+          name: formData.name.trim(),
+          description: formData.description.trim() || null,
+          park: formData.park as Park,
+          category: formData.category as ItemCategory,
+          original_price: parseFloat(formData.original_price),
+          selling_price: parseFloat(formData.selling_price),
+          quantity: parseInt(formData.quantity) || 1,
+          image_url: formData.image_url.trim() || null,
+          status: 'available',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setItems((prev) => [data, ...prev]);
+      setAddModalOpen(false);
+      setFormData(initialFormState);
+      toast({ title: 'Success', description: 'Item added to inventory' });
+    } catch (error: any) {
+      console.error('Error adding item:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to add item',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -110,7 +217,7 @@ export default function InventoryPage() {
           <h1 className="text-2xl font-heading font-bold text-foreground">Unclaimed Inventory</h1>
           <p className="text-muted-foreground">Manage items available for resale</p>
         </div>
-        <Button variant="gold" disabled>
+        <Button variant="gold" onClick={() => setAddModalOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Add Item
         </Button>
@@ -242,6 +349,161 @@ export default function InventoryPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Add Item Modal */}
+      <Dialog open={addModalOpen} onOpenChange={(open) => {
+        setAddModalOpen(open);
+        if (!open) setFormData(initialFormState);
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add Inventory Item</DialogTitle>
+            <DialogDescription>
+              Add a new item to your unclaimed inventory.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Item Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="name">Item Name *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., Mickey Mouse Spirit Jersey"
+              />
+            </div>
+
+            {/* Description */}
+            <div className="grid gap-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Optional description..."
+                rows={2}
+              />
+            </div>
+
+            {/* Park & Category */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Park *</Label>
+                <Select
+                  value={formData.park}
+                  onValueChange={(value) => setFormData({ ...formData, park: value as Park })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select park" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parkOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Category *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => setFormData({ ...formData, category: value as ItemCategory })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Prices */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="original_price">Purchase Price *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input
+                    id="original_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.original_price}
+                    onChange={(e) => setFormData({ ...formData, original_price: e.target.value })}
+                    className="pl-7"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="selling_price">Selling Price *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input
+                    id="selling_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.selling_price}
+                    onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
+                    className="pl-7"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Quantity & Image URL */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min="1"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="image_url">Image URL</Label>
+                <Input
+                  id="image_url"
+                  value={formData.image_url}
+                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  placeholder="https://..."
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddModalOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="gold" onClick={handleAddItem} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                'Add Item'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

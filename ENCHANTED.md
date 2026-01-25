@@ -119,16 +119,18 @@ SHIPPO_FROM_ZIP=<see .env.local>
 Schema file: `/home/ubuntu/enchanted-park-crm/supabase/migrations/001_initial_schema.sql`
 
 **Tables:**
-- `admin_users` - CRM admin access
+- `admin_users` - CRM admin access (with roles: admin, manager, shopper)
 - `customers` - Customer information
 - `shopping_trips` - Planned park visits
 - `requests` - Customer shopping requests
 - `request_items` - Items in each request
-- `invoices` - PayPal invoices
+- `invoices` - Invoice records with CC fee settings
+- `invoice_items` - Editable line items with per-line fees
 - `shipments` - Shippo shipments
 - `new_releases` - Merchandise feed
 - `unclaimed_inventory` - Shop items
 - `settings` - App configuration
+- `park_stores` - Store locations by park/land
 
 **Note:** Schema needs to be run in Supabase SQL Editor. Auth bypass is currently ON in middleware for development.
 
@@ -179,6 +181,9 @@ Schema file: `/home/ubuntu/enchanted-park-crm/supabase/migrations/001_initial_sc
 │   │   │   ├── invoices/              # Invoice management
 │   │   │   ├── shipments/             # Shipment tracking
 │   │   │   └── settings/              # App settings
+│   │   │       ├── page.tsx           # Main settings
+│   │   │       ├── product-lookup/    # AI product lookup config
+│   │   │       └── users/             # Admin user management
 │   │   └── auth/
 │   │       └── login/                 # Login page
 │   ├── components/
@@ -272,6 +277,9 @@ npx tsx scripts/setup-admin.ts
 - [x] Customer portal (requests, invoices, shipments)
 - [x] Dashboard analytics (revenue charts, request status)
 - [x] Settings page (business info, fees, shipping)
+- [x] Admin user management (add, edit, delete users with roles)
+- [x] Invoice items editor with per-line fees
+- [x] CC processing fee (auto-calculate or manual override)
 - [x] Supabase authentication (ENABLED)
 - [x] Responsive design with dark theme
 - [x] Database schema deployed to Supabase
@@ -1639,5 +1647,175 @@ After:  "Hair Bows, Spirit Jersey"
 
 ---
 
-*Last Updated: December 28, 2025*
+## Session: January 5, 2026 - Admin User Management & Invoice Improvements
+
+### Overview
+
+Built admin user management system and enhanced invoice system with editable line items and CC processing fees.
+
+### 1. Admin User Management
+
+**Location:** `/admin/settings/users`
+
+Complete admin user management interface for team member access control.
+
+**Features:**
+- **List all admin users** - Table showing name, email, role, date added
+- **Add new user** - Modal to add team members with name, email, role
+- **Edit user** - Change name and role for existing users
+- **Delete user** - Confirmation modal before removing users
+- **Role descriptions** - Card explaining each role's permissions
+
+**Available Roles:**
+
+| Role | Description |
+|------|-------------|
+| Admin | Full access to all features including user management, settings, and financial data |
+| Manager | Can manage requests, invoices, customers, and trips. Cannot manage users or core settings |
+| Shopper | Can view and update assigned trips, mark items as picked up, and add photos |
+
+**Files Created:**
+- `/src/app/admin/settings/users/page.tsx` - Admin users management page
+
+**Files Modified:**
+- `/src/app/admin/settings/page.tsx` - Added "Team & Users" card linking to users page
+
+**Database Table:** `admin_users` (already exists)
+```sql
+CREATE TABLE admin_users (
+  id UUID PRIMARY KEY,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT CHECK (role IN ('admin', 'manager', 'shopper')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### 2. Invoice Items Editor
+
+**Location:** `/admin/invoices/[id]` and `/admin/invoices/new`
+
+Complete rewrite of invoice system with editable line items and per-line fees.
+
+**Features:**
+- **Editable line items** - Edit name, quantity, unit price inline
+- **Per-line fees** - Tax, Pickup Fee, Shipping, Custom Fee per item
+- **Add/Delete items** - Full CRUD for invoice items
+- **Fee breakdown** - Summary shows: Items Subtotal, Tax, Pickup Fees, Shipping, Custom Fees
+- **CC Processing Fee** - Auto-calculate by percentage OR manual override
+
+**Files Created:**
+- `/supabase/migrations/20260105_invoice_items.sql` - Invoice items table with triggers
+- `/supabase/migrations/20260105_cc_fee.sql` - CC fee columns on invoices
+
+**Database Schema:**
+```sql
+-- Invoice items table
+CREATE TABLE invoice_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+  tax_amount DECIMAL(10,2) DEFAULT 0,
+  pickup_fee DECIMAL(10,2) DEFAULT 0,
+  shipping_fee DECIMAL(10,2) DEFAULT 0,
+  custom_fee_label VARCHAR(100),
+  custom_fee_amount DECIMAL(10,2) DEFAULT 0,
+  notes TEXT,
+  request_item_id UUID REFERENCES request_items(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- CC fee columns
+ALTER TABLE invoices ADD COLUMN cc_fee_enabled BOOLEAN DEFAULT false;
+ALTER TABLE invoices ADD COLUMN cc_fee_percentage DECIMAL(5,2) DEFAULT 3.00;
+ALTER TABLE invoices ADD COLUMN cc_fee_manual_amount DECIMAL(10,2) DEFAULT NULL;
+ALTER TABLE invoices ADD COLUMN cc_fee_amount DECIMAL(10,2) DEFAULT 0;
+```
+
+**Files Modified:**
+- `/src/app/admin/invoices/[id]/page.tsx` - Full invoice editor with items CRUD
+- `/src/app/admin/invoices/new/page.tsx` - New invoice creation with items editor
+
+---
+
+## Session: January 8, 2026 - Bug Fixes
+
+11 bugs identified, 7 fixed (1 skipped per user request, 3 remaining).
+
+### Bug #1: Customer List Pagination ✅
+**File:** `/src/app/admin/customers/page.tsx`
+
+- Added server-side pagination with Supabase `.range()`
+- Added server-side search with `.ilike()` filter
+- 20 customers per page
+- Debounced search (300ms)
+- Pagination controls: Previous/Next, "Page X of Y", "Showing X-Y of Z"
+
+### Bug #2: Customer List Sortable Columns ✅
+**File:** `/src/app/admin/customers/page.tsx`
+
+- Sortable columns: Name, Email (Contact), Date Added (Joined)
+- Click header to sort, click again to toggle direction
+- Sort icons: ArrowUpDown (unsorted), ArrowUp/ArrowDown (sorted)
+- Default sort: created_at descending
+
+### Bug #3: Inventory Add Item Button ✅
+**File:** `/src/app/admin/inventory/page.tsx`
+
+- Removed `disabled` prop from button
+- Added modal dialog for adding inventory items
+- Form fields: Name, Description, Park, Category, Purchase Price, Selling Price, Quantity, Image URL
+- Validates required fields, inserts to `unclaimed_inventory` table
+
+### Bug #4: Invoice Price Reverts ✅
+**File:** `/src/app/admin/requests/[id]/page.tsx`
+
+**Root cause:** `createInvoice()` created invoice record but NOT `invoice_items` rows. Invoice detail page fell back to `request_items`, so edits tried to update non-existent rows.
+
+**Fix:** Now creates `invoice_items` rows when creating invoice from request:
+```typescript
+const invoiceItems = request.items
+  .filter(item => item.status === 'found' || item.status === 'substituted')
+  .map(item => ({
+    invoice_id: invoice.id,
+    name: item.name,
+    quantity: item.quantity,
+    unit_price: item.actual_price || item.estimated_price || 0,
+    pickup_fee: item.pickup_fee || calculatePickupFee(...),
+    ...
+  }));
+```
+
+### Bug #5: Release Image Error Handling ✅
+**File:** `/src/app/admin/releases/page.tsx`
+
+- Added `onError` handlers to image elements
+- Shows "Image unavailable" placeholder when images fail to load
+- Applied to both desktop card view and mobile list view
+
+### Bug #6: Email SMTP - SKIPPED
+Skipped per user request (SMTP not configured yet).
+
+### Bug #7: Notification History Filters ✅
+**File:** `/src/app/admin/notifications/page.tsx`
+
+- Added Type filter: All Types, Email, SMS
+- Added Status filter: All Status, Sent, Delivered, Pending, Failed
+- Client-side filtering of logs
+- Dynamic empty state message based on filter results
+
+### Bugs Remaining (3):
+- Bug #8: Request detail - notes/price don't persist (investigating)
+- Bug #9: Settings - no save confirmation message
+- Bug #10: Shopping trips - can't display/delete upcoming
+- Bug #11: PayPal fee tool missing reverse calculator
+
+---
+
+*Last Updated: January 8, 2026*
 *Created for project continuity*

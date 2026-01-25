@@ -173,6 +173,11 @@ export default function RequestDetailPage() {
   });
   const [savingItem, setSavingItem] = useState(false);
 
+  // Notes editing state
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+
   useEffect(() => {
     fetchRequest();
     fetchAvailableTrips();
@@ -448,6 +453,43 @@ export default function RequestDetailPage() {
     }
   };
 
+  // Request notes editing functions
+  const startEditingNotes = () => {
+    setNotesValue(request?.notes || '');
+    setEditingNotes(true);
+  };
+
+  const saveRequestNotes = async () => {
+    if (!request) return;
+    setSavingNotes(true);
+    try {
+      const { error } = await supabase
+        .from('requests')
+        .update({ notes: notesValue || null })
+        .eq('id', request.id);
+
+      if (error) throw error;
+
+      setRequest(prev => prev ? { ...prev, notes: notesValue || null } : null);
+      setEditingNotes(false);
+      toast({ title: 'Notes saved' });
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save notes',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  const cancelEditNotes = () => {
+    setNotesValue(request?.notes || '');
+    setEditingNotes(false);
+  };
+
   const startEditingItem = (item: RequestItem) => {
     setEditingItemId(item.id);
     setEditingItemData({
@@ -540,6 +582,15 @@ export default function RequestDetailPage() {
           items: [...prev.items, newItem as RequestItem],
         };
       });
+
+      // Initialize editingPrices for the new item to prevent data loss when editing
+      setEditingPrices((prev) => ({
+        ...prev,
+        [newItem.id]: {
+          actual: '',
+          pickup: calculatePickupFee(newItemData.category, 0).toString(),
+        },
+      }));
 
       setShowAddItemDialog(false);
       setNewItemData({
@@ -705,6 +756,31 @@ export default function RequestDetailPage() {
         .single();
 
       if (invoiceError) throw invoiceError;
+
+      // Create invoice items from found/substituted request items
+      const invoiceItems = request.items
+        .filter(item => item.status === 'found' || item.status === 'substituted')
+        .map(item => {
+          const price = item.actual_price || item.estimated_price || 0;
+          const pickup = item.pickup_fee || calculatePickupFee(item.category, price);
+          return {
+            invoice_id: invoice.id,
+            name: item.name,
+            quantity: item.quantity,
+            unit_price: price,
+            pickup_fee: pickup,
+            tax_amount: 0,
+            shipping_fee: 0,
+            custom_fee_amount: 0,
+          };
+        });
+
+      if (invoiceItems.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('invoice_items')
+          .insert(invoiceItems);
+        if (itemsError) throw itemsError;
+      }
 
       // Update request with invoice_id and status
       const { error: updateError } = await supabase
@@ -1061,16 +1137,40 @@ export default function RequestDetailPage() {
         </Card>
       </div>
 
-      {request.notes && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm whitespace-pre-wrap">{request.notes}</p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Request Notes */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium">Request Notes</CardTitle>
+          {!editingNotes ? (
+            <Button variant="ghost" size="sm" onClick={startEditingNotes}>
+              <Pencil className="w-4 h-4" />
+            </Button>
+          ) : (
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={saveRequestNotes} disabled={savingNotes}>
+                {savingNotes ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={cancelEditNotes}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {editingNotes ? (
+            <Textarea
+              value={notesValue}
+              onChange={(e) => setNotesValue(e.target.value)}
+              placeholder="Add notes about this request..."
+              className="min-h-[100px]"
+            />
+          ) : (
+            <p className="text-sm whitespace-pre-wrap text-muted-foreground">
+              {request.notes || 'No notes yet. Click the pencil to add notes.'}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Items List */}
       <Card>
