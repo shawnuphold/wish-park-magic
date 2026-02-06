@@ -41,6 +41,25 @@ export default function NewCustomerPage() {
     setLoading(true);
 
     try {
+      // Pre-check for existing email (defense-in-depth alongside DB constraint)
+      if (formData.email) {
+        const { data: existing } = await supabase
+          .from('customers')
+          .select('id')
+          .eq('email', formData.email.toLowerCase().trim())
+          .maybeSingle();
+
+        if (existing) {
+          toast({
+            title: 'Duplicate Customer',
+            description: 'A customer with this email already exists.',
+            variant: 'destructive',
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
       const { data, error } = await supabase
         .from('customers')
         .insert({

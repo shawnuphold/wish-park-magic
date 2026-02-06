@@ -147,6 +147,11 @@ export default function InvoiceDetailPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newItem, setNewItem] = useState<Omit<InvoiceItem, 'id'>>(defaultItem);
 
+  // CC fee state
+  const [ccFeeEnabled, setCcFeeEnabled] = useState(false);
+  const [ccFeePercentage, setCcFeePercentage] = useState(3.0);
+  const [ccFeeManualAmount, setCcFeeManualAmount] = useState<number | null>(null);
+
   useEffect(() => {
     fetchInvoice();
   }, [id]);
@@ -230,6 +235,9 @@ export default function InvoiceDetailPage() {
         items,
       });
       setInvoiceNotes(invoiceData.notes || '');
+      setCcFeeEnabled(invoiceData.cc_fee_enabled || false);
+      setCcFeePercentage(invoiceData.cc_fee_percentage ?? 3.0);
+      setCcFeeManualAmount(invoiceData.cc_fee_manual_amount ?? null);
     } catch (error) {
       console.error('Error fetching invoice:', error);
       toast({
@@ -250,10 +258,40 @@ export default function InvoiceDetailPage() {
       (item.custom_fee_amount || 0);
   };
 
+  const subtotalBeforeCC = invoice
+    ? invoice.items.reduce((sum, item) => sum + calculateItemTotal(item), 0)
+    : 0;
+  const calculatedCcFee = subtotalBeforeCC * (ccFeePercentage / 100);
+  const actualCcFee = ccFeeEnabled
+    ? (ccFeeManualAmount !== null ? ccFeeManualAmount : calculatedCcFee)
+    : 0;
+
   const calculateInvoiceTotal = () => {
-    if (!invoice) return 0;
-    // Total is sum of all item totals (which include per-line shipping)
-    return invoice.items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+    return subtotalBeforeCC + actualCcFee;
+  };
+
+  const persistInvoiceTotals = async (items: InvoiceItem[], ccFee?: number) => {
+    if (!invoice) return;
+    const itemsTotal = items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+    const fee = ccFee !== undefined ? ccFee : actualCcFee;
+    const total = itemsTotal + fee;
+    const subtotal = items.reduce((sum, i) => sum + (i.unit_price * i.quantity), 0);
+    const taxAmount = items.reduce((sum, i) => sum + i.tax_amount, 0);
+    const shippingAmount = items.reduce((sum, i) => sum + i.shipping_fee, 0);
+
+    await supabase
+      .from('invoices')
+      .update({
+        total,
+        subtotal,
+        tax_amount: taxAmount,
+        shipping_amount: shippingAmount,
+        cc_fee_enabled: ccFeeEnabled,
+        cc_fee_percentage: ccFeePercentage,
+        cc_fee_manual_amount: ccFeeManualAmount,
+        cc_fee_amount: fee,
+      } as any)
+      .eq('id', invoice.id);
   };
 
   const saveItem = async (item: InvoiceItem | Omit<InvoiceItem, 'id'>, isNew: boolean = false) => {
@@ -336,8 +374,15 @@ export default function InvoiceDetailPage() {
         toast({ title: 'Item updated' });
       }
 
-      // Note: Totals are calculated dynamically from invoice.items in calculateInvoiceTotal()
-      // No need to re-fetch - local state update is sufficient and prevents stale data issues
+      // Persist totals to DB so customer-facing view shows correct amounts
+      const currentItems = invoice.items.slice();
+      if (isNew) {
+        currentItems.push(item as InvoiceItem);
+      } else {
+        const idx = currentItems.findIndex(i => i.id === (item as InvoiceItem).id);
+        if (idx >= 0) currentItems[idx] = item as InvoiceItem;
+      }
+      await persistInvoiceTotals(currentItems);
     } catch (error) {
       console.error('Error saving item:', error);
       toast({
@@ -367,12 +412,13 @@ export default function InvoiceDetailPage() {
         items: prev.items.filter(i => i.id !== deletingItemId),
       } : null);
 
+      // Persist updated totals to DB
+      const remainingItems = invoice.items.filter(i => i.id !== deletingItemId);
+      await persistInvoiceTotals(remainingItems);
+
       setShowDeleteDialog(false);
       setDeletingItemId(null);
       toast({ title: 'Item deleted' });
-
-      // Refresh to get updated totals
-      await fetchInvoice();
     } catch (error) {
       console.error('Error deleting item:', error);
       toast({
@@ -1050,6 +1096,69 @@ export default function InvoiceDetailPage() {
                   </span>
                 </div>
               )}
+              {/* CC Processing Fee */}
+              <div className="border-t pt-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="ccFeeEnabledEdit"
+                    checked={ccFeeEnabled}
+                    onChange={async (e) => {
+                      setCcFeeEnabled(e.target.checked);
+                      const fee = e.target.checked
+                        ? (ccFeeManualAmount !== null ? ccFeeManualAmount : subtotalBeforeCC * (ccFeePercentage / 100))
+                        : 0;
+                      if (invoice) await persistInvoiceTotals(invoice.items, fee);
+                    }}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="ccFeeEnabledEdit" className="text-sm font-medium cursor-pointer">
+                    Add CC Processing Fee
+                  </label>
+                </div>
+
+                {ccFeeEnabled && (
+                  <div className="ml-5 space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Percentage:</span>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="10"
+                        value={ccFeePercentage}
+                        onChange={(e) => setCcFeePercentage(parseFloat(e.target.value) || 0)}
+                        onBlur={() => invoice && persistInvoiceTotals(invoice.items)}
+                        className="w-16 h-7 text-sm"
+                      />
+                      <span className="text-muted-foreground">% = ${calculatedCcFee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Or manual:</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ccFeeManualAmount ?? ''}
+                        onChange={(e) => setCcFeeManualAmount(e.target.value ? parseFloat(e.target.value) : null)}
+                        onBlur={() => invoice && persistInvoiceTotals(invoice.items)}
+                        placeholder="Use %"
+                        className="w-20 h-7 text-sm"
+                      />
+                    </div>
+                    <div className="flex justify-between font-medium">
+                      <span>CC Fee:</span>
+                      <span>
+                        ${actualCcFee.toFixed(2)}
+                        {ccFeeManualAmount !== null && (
+                          <span className="text-xs text-muted-foreground ml-1">(manual)</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <Separator />
               <div className="flex justify-between text-lg font-bold">
                 <span>Total</span>

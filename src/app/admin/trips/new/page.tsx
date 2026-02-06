@@ -132,33 +132,26 @@ export default function NewTripPage() {
     setLoading(true);
 
     try {
-      // Create the shopping trip
-      const { data: trip, error: tripError } = await supabase
-        .from('shopping_trips')
-        .insert({
-          date: date.toISOString().split('T')[0],
+      // Use API route (service role) to ensure writes succeed regardless of RLS
+      const response = await fetch('/api/shopping-trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trip_date: date.toISOString().split('T')[0],
           parks: selectedParks,
+          park: selectedParks[0] || null,
           shopper_id: shopperId || null,
-          status: 'planned',
           notes: notes || null,
-        })
-        .select()
-        .single();
+          request_ids: selectedRequests.length > 0 ? selectedRequests : undefined,
+        }),
+      });
 
-      if (tripError) throw tripError;
-
-      // Assign selected requests to this trip
-      if (selectedRequests.length > 0) {
-        const { error: updateError } = await supabase
-          .from('requests')
-          .update({
-            shopping_trip_id: trip.id,
-            status: 'scheduled',
-          })
-          .in('id', selectedRequests);
-
-        if (updateError) throw updateError;
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to create trip');
       }
+
+      const { trip } = await response.json();
 
       toast.success(`Shopping trip scheduled for ${date.toLocaleDateString()}`);
 

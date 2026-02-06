@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       .from('customers')
       .select('id')
       .eq('email', body.email.toLowerCase().trim())
-      .single();
+      .maybeSingle();
 
     if (existingCustomer) {
       customerId = existingCustomer.id;
@@ -142,7 +142,12 @@ export async function POST(request: NextRequest) {
 
     if (itemError) {
       console.error('Error creating request item:', itemError);
-      // Request was created, so still return success but log the issue
+      // Clean up the orphan request since items failed
+      await supabase.from('requests').delete().eq('id', newRequest.id);
+      return NextResponse.json(
+        { error: 'Failed to create request items. Please try again.' },
+        { status: 500 }
+      );
     }
 
     // Generate a human-readable request ID

@@ -12,16 +12,20 @@ export async function POST(request: NextRequest) {
   if (!auth.success) return auth.response;
 
   try {
-    const { name, trip_date, park, notes, item_ids } = await request.json();
+    const { name, trip_date, park, parks, notes, item_ids, request_ids, shopper_id } = await request.json();
 
-    if (!trip_date || !park) {
+    // Support both flows: CreateTripModal sends park (specific), trips/new sends parks (array)
+    if (!trip_date && !park && (!parks || parks.length === 0)) {
       return NextResponse.json({ error: 'Date and park are required' }, { status: 400 });
     }
 
     // Map park code to general park category
-    const generalPark = park.startsWith('disney') ? 'disney'
-      : park.startsWith('universal') ? 'universal'
-      : 'seaworld';
+    const generalPark = park
+      ? (park.startsWith('disney') ? 'disney'
+        : park.startsWith('universal') ? 'universal'
+        : 'seaworld')
+      : null;
+    const tripParks = parks || (generalPark ? [generalPark] : []);
 
     // Create the trip
     const { data: trip, error: tripError } = await supabase
@@ -30,8 +34,9 @@ export async function POST(request: NextRequest) {
         name: name || `Trip - ${trip_date}`,
         date: trip_date,
         trip_date,
-        park,
-        parks: [generalPark],
+        park: park || null,
+        parks: tripParks,
+        shopper_id: shopper_id || null,
         status: 'planned',
         notes: notes || null,
       })
@@ -56,6 +61,40 @@ export async function POST(request: NextRequest) {
 
       if (assignError) {
         console.error('Error assigning items:', assignError);
+      }
+
+      // Also link parent requests to this trip so the trip detail page can find them
+      const { data: assignedItems } = await supabase
+        .from('request_items')
+        .select('request_id')
+        .in('id', item_ids);
+
+      if (assignedItems && assignedItems.length > 0) {
+        const uniqueRequestIds = [...new Set(assignedItems.map(i => i.request_id))].filter(Boolean);
+        if (uniqueRequestIds.length > 0) {
+          await supabase
+            .from('requests')
+            .update({
+              shopping_trip_id: trip.id,
+              status: 'scheduled',
+            })
+            .in('id', uniqueRequestIds);
+        }
+      }
+    }
+
+    // Assign requests directly (used by /admin/trips/new page)
+    if (request_ids && request_ids.length > 0) {
+      const { error: requestAssignError } = await supabase
+        .from('requests')
+        .update({
+          shopping_trip_id: trip.id,
+          status: 'scheduled',
+        })
+        .in('id', request_ids);
+
+      if (requestAssignError) {
+        console.error('Error assigning requests:', requestAssignError);
       }
     }
 
