@@ -32,6 +32,9 @@ const WEBHOOK_ROUTES = [
 const PUBLIC_API_ROUTES = [
   '/api/releases',           // GET is public, POST requires auth
   '/api/park-stores',        // Public store data
+  '/api/portal/',            // Portal login + lookup (customer auth via OTP, not Supabase auth)
+  '/api/public/',            // Public request form + invoice view
+  '/api/shop/',              // Public shop inventory
 ]
 
 const PORTAL_ROUTES_PATTERN = /^\/portal(\/.*)?$/

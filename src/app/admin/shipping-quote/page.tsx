@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,6 +101,13 @@ export default function ShippingQuotePage() {
     height: '',
     weight: '',
   });
+
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const debouncedSearchCustomers = useCallback((query: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => searchCustomers(query), 300);
+  }, []);
 
   const searchCustomers = async (query: string) => {
     if (query.length < 2) {
@@ -345,7 +352,7 @@ export default function ShippingQuotePage() {
                   value={customerSearch}
                   onChange={(e) => {
                     setCustomerSearch(e.target.value);
-                    searchCustomers(e.target.value);
+                    debouncedSearchCustomers(e.target.value);
                   }}
                 />
                 {customers.length > 0 && (

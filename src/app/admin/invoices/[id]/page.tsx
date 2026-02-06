@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/integrations/supabase/client';
+import { formatDate } from '@/lib/utils/dates';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -405,7 +406,7 @@ export default function InvoiceDetailPage() {
     setSending(true);
 
     try {
-      const response = await fetch('/api/paypal/send-invoice', {
+      const response = await fetch('/api/payments/paypal/create-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoiceId: invoice.id }),
@@ -656,8 +657,8 @@ export default function InvoiceDetailPage() {
               </Badge>
             </div>
             <p className="text-muted-foreground">
-              Created {new Date(invoice.created_at).toLocaleDateString()}
-              {invoice.sent_at && ` • Sent ${new Date(invoice.sent_at).toLocaleDateString()}`}
+              Created {formatDate(invoice.created_at)}
+              {invoice.sent_at && ` • Sent ${formatDate(invoice.sent_at)}`}
             </p>
           </div>
         </div>
@@ -800,7 +801,7 @@ export default function InvoiceDetailPage() {
           </CardHeader>
           <CardContent>
             <p className="text-lg">
-              {new Date(invoice.paid_at || invoice.created_at).toLocaleDateString()}
+              {formatDate(invoice.paid_at || invoice.created_at)}
             </p>
           </CardContent>
         </Card>
@@ -894,7 +895,7 @@ export default function InvoiceDetailPage() {
               <div className="col-span-3">Item</div>
               <div className="col-span-1 text-center">Qty</div>
               <div className="col-span-1 text-right">Price</div>
-              <div className="col-span-1 text-right">Tax</div>
+              <div className="col-span-1 text-right">Tax (6.5%)</div>
               <div className="col-span-1 text-right">Pickup</div>
               <div className="col-span-1 text-right">Ship</div>
               <div className="col-span-1 text-right">Custom</div>
@@ -1019,7 +1020,7 @@ export default function InvoiceDetailPage() {
               </div>
               {invoice.items.reduce((sum, item) => sum + (item.tax_amount || 0), 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tax</span>
+                  <span className="text-muted-foreground">Tax (6.5%)</span>
                   <span>
                     ${invoice.items.reduce((sum, item) => sum + (item.tax_amount || 0), 0).toFixed(2)}
                   </span>

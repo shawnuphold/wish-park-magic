@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Check, X, MapPin, ImageIcon, Undo2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { MarkFoundForm } from './MarkFoundForm';
 import { ImageViewer } from './ImageViewer';
 
@@ -13,6 +14,7 @@ export interface ShoppingItem {
   description?: string | null;
   category?: string | null;
   park?: string | null;
+  specific_park?: string | null;  // e.g., "Magic Kingdom", "EPCOT"
   store_name?: string | null;
   land_name?: string | null;
   quantity?: number;
@@ -60,9 +62,12 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
       });
       if (response.ok) {
         onUpdate();
+      } else {
+        toast.error('Failed to mark item');
       }
     } catch (error) {
       console.error('Error marking not found:', error);
+      toast.error('Failed to mark item');
     } finally {
       setMarkingNotFound(false);
       setShowNotFoundOptions(false);
@@ -81,9 +86,12 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
       });
       if (response.ok) {
         onUpdate();
+      } else {
+        toast.error('Failed to reset item');
       }
     } catch (error) {
       console.error('Error resetting item:', error);
+      toast.error('Failed to reset item');
     } finally {
       setResetting(false);
     }
@@ -170,11 +178,15 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
           <span className="text-sm">{item.customerName}</span>
         </div>
 
-        {/* Store location */}
-        {item.store_name && (
+        {/* Store location - show specific park, land, and store */}
+        {(item.specific_park || item.store_name || item.land_name) && (
           <div className="flex items-center gap-1.5 text-gray-500">
-            <MapPin className="w-4 h-4" />
-            <span className="text-sm">{item.store_name}</span>
+            <MapPin className="w-4 h-4 flex-shrink-0" />
+            <span className="text-sm">
+              {[item.specific_park, item.land_name, item.store_name]
+                .filter(Boolean)
+                .join(' • ')}
+            </span>
           </div>
         )}
 

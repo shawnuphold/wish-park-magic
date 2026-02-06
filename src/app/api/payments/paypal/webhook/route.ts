@@ -13,7 +13,7 @@
  *
  * Required environment variables:
  *   - PAYPAL_CLIENT_ID
- *   - PAYPAL_SECRET
+ *   - PAYPAL_CLIENT_SECRET
  *   - PAYPAL_WEBHOOK_ID (from PayPal Developer Dashboard)
  *   - PAYPAL_MODE ('sandbox' or 'live')
  */
@@ -30,7 +30,7 @@ const supabase = createClient(
 );
 
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
+const PAYPAL_SECRET = process.env.PAYPAL_CLIENT_SECRET;
 const PAYPAL_WEBHOOK_ID = process.env.PAYPAL_WEBHOOK_ID;
 const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox';
 const PAYPAL_BASE_URL = PAYPAL_MODE === 'live'
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
 
         if (invoice) {
           // Update invoice status
-          await supabase
+          const { error: invoiceUpdateError } = await supabase
             .from('invoices')
             .update({
               status: 'paid',
@@ -211,12 +211,20 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', invoice.id);
 
+          if (invoiceUpdateError) {
+            log.error('Failed to update invoice status', invoiceUpdateError, { invoiceId: invoice.id });
+          }
+
           // Update request status
           if (invoice.request_id) {
-            await supabase
+            const { error: requestUpdateError } = await supabase
               .from('requests')
               .update({ status: 'paid' })
               .eq('id', invoice.request_id);
+
+            if (requestUpdateError) {
+              log.error('Failed to update request status', requestUpdateError, { requestId: invoice.request_id });
+            }
           }
 
           log.info('Invoice marked as paid', { invoiceId: invoice.id });
@@ -227,10 +235,14 @@ export async function POST(request: NextRequest) {
       case 'INVOICING.INVOICE.CANCELLED': {
         const paypalInvoiceId = resource.id;
 
-        await supabase
+        const { error: cancelError } = await supabase
           .from('invoices')
           .update({ status: 'cancelled' })
           .eq('paypal_invoice_id', paypalInvoiceId);
+
+        if (cancelError) {
+          log.error('Failed to cancel invoice', cancelError, { paypalInvoiceId });
+        }
 
         log.info('Invoice cancelled', { paypalInvoiceId });
         break;

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 // Disable caching for this route
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,9 @@ const PARKS = [
 ] as const;
 
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     // Get all pending items
     const { data: items, error } = await supabase

@@ -49,18 +49,20 @@ export function Footer() {
               We bring the magic to your doorstep.
             </p>
             <div className="flex items-center gap-3">
-              <a
-                href="#"
+              <button
+                onClick={() => toast.info('Facebook page coming soon!')}
                 className="w-10 h-10 rounded-full bg-primary-foreground/10 flex items-center justify-center hover:bg-gold hover:text-midnight transition-colors"
+                aria-label="Facebook (coming soon)"
               >
                 <Facebook className="w-5 h-5" />
-              </a>
-              <a
-                href="#"
+              </button>
+              <button
+                onClick={() => toast.info('Instagram page coming soon!')}
                 className="w-10 h-10 rounded-full bg-primary-foreground/10 flex items-center justify-center hover:bg-gold hover:text-midnight transition-colors"
+                aria-label="Instagram (coming soon)"
               >
                 <Instagram className="w-5 h-5" />
-              </a>
+              </button>
               <a
                 href="mailto:hello@enchantedparkpickups.com"
                 className="w-10 h-10 rounded-full bg-primary-foreground/10 flex items-center justify-center hover:bg-gold hover:text-midnight transition-colors"

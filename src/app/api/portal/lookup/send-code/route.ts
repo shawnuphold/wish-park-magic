@@ -23,15 +23,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find the request
+    // Find the request and verify it belongs to a customer with this email
     const { data: requestData, error: requestError } = await supabase
       .from('requests')
-      .select('id, email')
+      .select('id, customer_id')
       .eq('id', request_id)
-      .eq('email', email.toLowerCase())
       .single();
 
     if (requestError || !requestData) {
+      return NextResponse.json(
+        { success: false, error: 'Request not found. Please check your request ID.' },
+        { status: 404 }
+      );
+    }
+
+    // Verify the customer email matches
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('email')
+      .eq('id', requestData.customer_id)
+      .single();
+
+    if (customerError || !customer || customer.email?.toLowerCase() !== email.toLowerCase()) {
       return NextResponse.json(
         { success: false, error: 'Request not found. Please check your email and request ID.' },
         { status: 404 }
@@ -50,11 +63,9 @@ export async function POST(request: NextRequest) {
         html: generateVerificationEmailHtml({ code, requestId: request_id }),
         text: generateVerificationEmailText({ code, requestId: request_id }),
       });
-      console.log(`Verification code sent to ${email}`);
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError);
       // Don't fail the request - the code is still valid
-      // User can check console in dev mode
     }
 
     return NextResponse.json({

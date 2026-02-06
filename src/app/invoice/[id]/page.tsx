@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -17,9 +16,14 @@ import {
 
 interface InvoiceItem {
   name: string;
+  description?: string | null;
   quantity: number;
-  actual_price: number;
+  unit_price: number;
+  tax_amount: number;
   pickup_fee: number;
+  shipping_fee: number;
+  custom_fee_label?: string | null;
+  custom_fee_amount: number;
 }
 
 interface Invoice {
@@ -34,14 +38,14 @@ interface Invoice {
   paid_at: string | null;
   due_date: string | null;
   notes: string | null;
+  items: InvoiceItem[];
   request: {
     id: string;
     customer: {
       name: string;
       email: string;
     };
-    items: InvoiceItem[];
-  };
+  } | null;
 }
 
 export default function CustomerInvoicePage() {
@@ -56,30 +60,28 @@ export default function CustomerInvoicePage() {
 
   const fetchInvoice = async () => {
     try {
-      const { data, error: fetchError } = await supabase
-        .from('invoices')
-        .select(`
-          *,
-          request:requests!invoices_request_id_fkey(
-            id,
-            customer:customers(name, email),
-            items:request_items(name, quantity, actual_price, pickup_fee)
-          )
-        `)
-        .eq('id', id)
-        .single();
+      const response = await fetch(`/api/public/invoice/${id}`);
+      const data = await response.json();
 
-      if (fetchError) throw fetchError;
+      if (!response.ok || !data.invoice) {
+        throw new Error(data.error || 'Invoice not found');
+      }
 
-      // Cast to any to handle new fields that may not exist in DB yet
-      const invoiceData = data as any;
+      const invoiceData = data.invoice;
       setInvoice({
-        ...invoiceData,
-        status: invoiceData.status as Invoice['status'],
-        request: invoiceData.request as Invoice['request'],
+        id: invoiceData.id,
         invoice_number: invoiceData.invoice_number || null,
+        subtotal: invoiceData.subtotal || 0,
+        tax_amount: invoiceData.tax_amount || 0,
+        shipping_amount: invoiceData.shipping_amount || 0,
+        total: invoiceData.total || 0,
+        status: invoiceData.status as Invoice['status'],
+        created_at: invoiceData.created_at,
+        paid_at: invoiceData.paid_at || null,
         due_date: invoiceData.due_date || null,
         notes: invoiceData.notes || null,
+        items: invoiceData.items || [],
+        request: invoiceData.request || null,
       });
     } catch (err) {
       console.error('Error fetching invoice:', err);
@@ -237,28 +239,41 @@ export default function CustomerInvoicePage() {
             <div>
               <h3 className="font-medium mb-3">Items</h3>
               <div className="space-y-3">
-                {invoice.request?.items?.map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex justify-between py-2 border-b last:border-0"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.quantity} × ${(item.actual_price || 0).toFixed(2)}
-                        {item.pickup_fee > 0 && (
-                          <span> + ${item.pickup_fee.toFixed(2)} service fee</span>
-                        )}
+                {invoice.items?.map((item, index) => {
+                  const itemTotal = (item.unit_price * item.quantity) +
+                    (item.tax_amount || 0) +
+                    (item.pickup_fee || 0) +
+                    (item.shipping_fee || 0) +
+                    (item.custom_fee_amount || 0);
+                  return (
+                    <div
+                      key={index}
+                      className="flex justify-between py-2 border-b last:border-0"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {item.quantity} × ${(item.unit_price || 0).toFixed(2)}
+                          {(item.pickup_fee || 0) > 0 && (
+                            <span> + ${item.pickup_fee.toFixed(2)} service fee</span>
+                          )}
+                          {(item.tax_amount || 0) > 0 && (
+                            <span> + ${item.tax_amount.toFixed(2)} tax</span>
+                          )}
+                          {(item.shipping_fee || 0) > 0 && (
+                            <span> + ${item.shipping_fee.toFixed(2)} shipping</span>
+                          )}
+                          {(item.custom_fee_amount || 0) > 0 && item.custom_fee_label && (
+                            <span> + ${item.custom_fee_amount.toFixed(2)} {item.custom_fee_label}</span>
+                          )}
+                        </p>
+                      </div>
+                      <p className="font-medium">
+                        ${itemTotal.toFixed(2)}
                       </p>
                     </div>
-                    <p className="font-medium">
-                      ${(
-                        ((item.actual_price || 0) + (item.pickup_fee || 0)) *
-                        item.quantity
-                      ).toFixed(2)}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

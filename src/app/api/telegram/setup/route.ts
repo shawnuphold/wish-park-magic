@@ -6,10 +6,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   const token = process.env.TELEGRAM_BOT_TOKEN;
 
   if (!token) {
@@ -76,6 +80,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   const token = process.env.TELEGRAM_BOT_TOKEN;
 
   if (!token) {

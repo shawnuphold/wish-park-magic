@@ -235,15 +235,31 @@ export default function ReleaseDetailPage() {
         updateData.sold_out_date = new Date().toISOString().split('T')[0];
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('new_releases')
         .update(updateData)
-        .eq('id', id);
+        .eq('id', id)
+        .select();
 
       if (error) throw error;
 
+      // Check if any rows were actually updated (RLS may silently block)
+      if (count === 0) {
+        throw new Error('Update blocked - you may not have permission to edit this release. Please contact an administrator.');
+      }
+
+      // Re-fetch to confirm the update
+      const { data: updated } = await supabase
+        .from('new_releases')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (updated) {
+        setRelease(updated as NewRelease);
+      }
+
       toast({ title: 'Release Updated' });
-      router.refresh();
     } catch (error) {
       toast({
         title: 'Error',

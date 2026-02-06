@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getSerpApiUsageThisMonth, resetMonthlyUsage } from '@/lib/ai/googleLens';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 const PRODUCT_LOOKUP_SETTINGS = [
   'product_lookup_provider',
@@ -11,6 +12,9 @@ const PRODUCT_LOOKUP_SETTINGS = [
 ];
 
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     const supabase = getSupabaseAdmin();
 
@@ -51,6 +55,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     const supabase = getSupabaseAdmin();
     const body = await request.json();

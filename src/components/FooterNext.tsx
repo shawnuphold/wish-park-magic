@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Facebook, Instagram, Mail, CreditCard } from 'lucide-react';
+import { Facebook, Users, Mail, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
@@ -56,16 +56,22 @@ export function Footer() {
             </p>
             <div className="flex items-center gap-3">
               <a
-                href="#"
+                href="https://www.facebook.com/profile.php?id=61579202810263"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-gold hover:text-[hsl(222,50%,17%)] transition-colors"
+                aria-label="Facebook Page"
               >
                 <Facebook className="w-5 h-5" />
               </a>
               <a
-                href="#"
+                href="https://www.facebook.com/share/g/17AC7r8dJh/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-gold hover:text-[hsl(222,50%,17%)] transition-colors"
+                aria-label="Facebook Group"
               >
-                <Instagram className="w-5 h-5" />
+                <Users className="w-5 h-5" />
               </a>
               <a
                 href="mailto:hello@enchantedparkpickups.com"

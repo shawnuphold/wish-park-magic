@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/integrations/supabase/client';
+import { formatDate } from '@/lib/utils/dates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -92,9 +93,11 @@ export default function InvoicesPage() {
   };
 
   const filteredInvoices = invoices.filter((inv) => {
+    const searchLower = search.toLowerCase();
     const matchesSearch =
-      inv.request?.customer?.name?.toLowerCase().includes(search.toLowerCase()) ||
-      inv.request?.customer?.email?.toLowerCase().includes(search.toLowerCase());
+      inv.invoice_number?.toLowerCase().includes(searchLower) ||
+      inv.request?.customer?.name?.toLowerCase().includes(searchLower) ||
+      inv.request?.customer?.email?.toLowerCase().includes(searchLower);
     const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -234,7 +237,7 @@ export default function InvoicesPage() {
                         <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            {new Date(invoice.created_at).toLocaleDateString()}
+                            {formatDate(invoice.created_at)}
                           </span>
                           <span className="font-medium text-foreground">
                             ${invoice.total.toFixed(2)}

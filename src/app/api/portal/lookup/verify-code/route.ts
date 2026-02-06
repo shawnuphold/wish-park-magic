@@ -31,12 +31,27 @@ export async function POST(request: NextRequest) {
     // Clear the used code
     clearVerificationCode(email, request_id);
 
-    // Fetch the request details
+    // Fetch the request with items and customer data
     const { data: requestData, error: requestError } = await supabase
       .from('requests')
-      .select('*')
+      .select(`
+        id,
+        status,
+        created_at,
+        customer_id,
+        request_items (
+          id,
+          name,
+          description,
+          park,
+          reference_url,
+          reference_images,
+          estimated_price,
+          actual_price,
+          status
+        )
+      `)
       .eq('id', request_id)
-      .eq('email', email.toLowerCase())
       .single();
 
     if (requestError || !requestData) {
@@ -46,21 +61,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Format the request
+    // Verify the customer email matches
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('name, email, phone, address_line1, address_line2, city, state, postal_code')
+      .eq('id', requestData.customer_id)
+      .single();
+
+    if (!customer || customer.email?.toLowerCase() !== email.toLowerCase()) {
+      return NextResponse.json(
+        { success: false, error: 'Email verification failed' },
+        { status: 403 }
+      );
+    }
+
+    // Build shipping address
+    const addressParts = [customer.address_line1, customer.address_line2, customer.city, customer.state, customer.postal_code].filter(Boolean);
+    const shippingAddress = addressParts.join(', ');
+
+    // Format the request using customer and items data
+    const items = (requestData.request_items as Array<Record<string, unknown>>) || [];
+    const firstItem = items[0] as Record<string, unknown> | undefined;
+
     const formattedRequest = {
       id: requestData.id,
       date: requestData.created_at,
-      park: requestData.park || 'disney',
+      park: (firstItem?.park as string) || 'disney',
       status: requestData.status || 'pending',
-      needed_by: requestData.needed_by,
-      full_name: requestData.full_name || requestData.name,
-      email: requestData.email,
-      phone: requestData.phone,
-      shipping_address: requestData.shipping_address || requestData.address,
-      item_description: requestData.item_description || requestData.description,
-      reference_urls: requestData.reference_urls,
-      time_sensitive: !!requestData.needed_by,
-      images: requestData.images || [],
+      needed_by: null,
+      full_name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      shipping_address: shippingAddress,
+      item_description: items.map((i) => i.name).join(', ') || 'No items',
+      reference_urls: (firstItem?.reference_url as string) || null,
+      time_sensitive: false,
+      images: (firstItem?.reference_images as string[]) || [],
     };
 
     return NextResponse.json({

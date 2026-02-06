@@ -31,8 +31,6 @@ import {
   ArrowLeft,
   Mail,
   Lock,
-  Eye,
-  EyeOff,
   Calendar,
   MapPin,
   Phone,
@@ -51,7 +49,6 @@ import { z } from 'zod';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
 });
 
 const lookupSchema = z.object({
@@ -113,10 +110,10 @@ export default function PortalPage() {
   const [activeTab, setActiveTab] = useState('requests');
 
   // Login form state
-  const [loginData, setLoginData] = useState({ email: '', password: '' });
+  const [loginData, setLoginData] = useState({ email: '', code: '' });
+  const [loginStep, setLoginStep] = useState<'email' | 'code'>('email');
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
   // Lookup modal state
   const [lookupModalOpen, setLookupModalOpen] = useState(false);
@@ -131,7 +128,7 @@ export default function PortalPage() {
     setIsLoading(false);
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLoginSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErrors({});
 
@@ -153,7 +150,40 @@ export default function PortalPage() {
       const response = await fetch('/api/portal/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginData),
+        body: JSON.stringify({ email: loginData.email, action: 'send-code' }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setLoginStep('code');
+        toast.success('Verification code sent to your email!');
+      } else {
+        toast.error(data.error || 'Failed to send code. Please try again.');
+      }
+    } catch {
+      toast.error('Failed to send verification code. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLoginVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginErrors({});
+
+    if (!loginData.code || loginData.code.length < 4) {
+      setLoginErrors({ code: 'Please enter the verification code' });
+      return;
+    }
+
+    setIsLoggingIn(true);
+
+    try {
+      const response = await fetch('/api/portal/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginData.email, action: 'verify-code', code: loginData.code }),
       });
 
       const data = await response.json();
@@ -165,7 +195,7 @@ export default function PortalPage() {
         setShipments(data.shipments || []);
         toast.success('Logged in successfully!');
       } else {
-        toast.error(data.error || 'Invalid credentials. Please try again.');
+        toast.error(data.error || 'Invalid verification code.');
       }
     } catch {
       toast.error('Login failed. Please try again.');
@@ -344,66 +374,91 @@ export default function PortalPage() {
                   </p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="email"
-                        type="email"
-                        value={loginData.email}
-                        onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                        placeholder="your@email.com"
-                        className={`pl-10 ${loginErrors.email ? 'border-destructive' : ''}`}
-                      />
+                {loginStep === 'email' ? (
+                  <form onSubmit={handleLoginSendCode} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="email"
+                          type="email"
+                          value={loginData.email}
+                          onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                          placeholder="your@email.com"
+                          className={`pl-10 ${loginErrors.email ? 'border-destructive' : ''}`}
+                        />
+                      </div>
+                      {loginErrors.email && (
+                        <p className="text-sm text-destructive">{loginErrors.email}</p>
+                      )}
                     </div>
-                    {loginErrors.email && (
-                      <p className="text-sm text-destructive">{loginErrors.email}</p>
-                    )}
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="password"
-                        type={showPassword ? 'text' : 'password'}
-                        value={loginData.password}
-                        onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                        placeholder="••••••••"
-                        className={`pl-10 pr-10 ${loginErrors.password ? 'border-destructive' : ''}`}
-                      />
-                      <button
+                    <Button
+                      type="submit"
+                      size="lg"
+                      className="w-full bg-gold hover:bg-gold/90 text-[hsl(222,50%,17%)]"
+                      disabled={isLoggingIn}
+                    >
+                      {isLoggingIn ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Sending code...
+                        </>
+                      ) : (
+                        'Send Verification Code'
+                      )}
+                    </Button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleLoginVerifyCode} className="space-y-4">
+                    <p className="text-sm text-muted-foreground text-center">
+                      We sent a verification code to <span className="font-medium text-foreground">{loginData.email}</span>
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="loginCode">Verification Code</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="loginCode"
+                          type="text"
+                          inputMode="numeric"
+                          value={loginData.code}
+                          onChange={(e) => setLoginData({ ...loginData, code: e.target.value })}
+                          placeholder="Enter 6-digit code"
+                          className={`pl-10 ${loginErrors.code ? 'border-destructive' : ''}`}
+                          autoFocus
+                        />
+                      </div>
+                      {loginErrors.code && (
+                        <p className="text-sm text-destructive">{loginErrors.code}</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => { setLoginStep('email'); setLoginData({ ...loginData, code: '' }); }}
                       >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+                        <ArrowLeft className="w-4 h-4 mr-2" />
+                        Back
+                      </Button>
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-gold hover:bg-gold/90 text-[hsl(222,50%,17%)]"
+                        disabled={isLoggingIn}
+                      >
+                        {isLoggingIn ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          'Verify & Sign In'
+                        )}
+                      </Button>
                     </div>
-                    {loginErrors.password && (
-                      <p className="text-sm text-destructive">{loginErrors.password}</p>
-                    )}
-                  </div>
-
-                  <Button
-                    type="submit"
-                    size="lg"
-                    className="w-full bg-gold hover:bg-gold/90 text-[hsl(222,50%,17%)]"
-                    disabled={isLoggingIn}
-                  >
-                    {isLoggingIn ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      'Sign In'
-                    )}
-                  </Button>
-                </form>
+                  </form>
+                )}
 
                 <div className="relative my-6">
                   <div className="absolute inset-0 flex items-center">

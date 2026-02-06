@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Park {
   code: string;
@@ -27,6 +28,7 @@ export function ParkSelector() {
       }
     } catch (error) {
       console.error('Error fetching parks:', error);
+      toast.error('Failed to load parks');
     } finally {
       setLoading(false);
       setRefreshing(false);

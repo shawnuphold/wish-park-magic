@@ -68,9 +68,19 @@ export default function NewCustomerPage() {
       router.push(`/admin/customers/${data.id}`);
     } catch (error: any) {
       console.error('Error creating customer:', error);
+      // Check for duplicate email constraint violation
+      const errorStr = JSON.stringify(error).toLowerCase();
+      const isDuplicateEmail = error?.message?.toLowerCase().includes('duplicate key') ||
+                               error?.message?.toLowerCase().includes('unique constraint') ||
+                               error?.message?.toLowerCase().includes('already exists') ||
+                               error?.code === '23505' ||
+                               errorStr.includes('duplicate') ||
+                               errorStr.includes('unique');
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create customer',
+        description: isDuplicateEmail
+          ? 'A customer with this email already exists'
+          : (error.message || 'Failed to create customer'),
         variant: 'destructive',
       });
     } finally {

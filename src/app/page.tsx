@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +14,27 @@ import {
   Package,
   ArrowRight,
 } from 'lucide-react';
+
+const parkCards = [
+  {
+    name: 'Disney World',
+    image: '/images/parks/castle-fireworks.jpg',
+    description: 'Magic Kingdom, EPCOT, Hollywood Studios & Animal Kingdom',
+    href: '/request?park=disney',
+  },
+  {
+    name: 'Universal Orlando',
+    image: '/images/parks/wizard-castle.jpg',
+    description: 'Universal Studios, Islands of Adventure & CityWalk',
+    href: '/request?park=universal',
+  },
+  {
+    name: 'SeaWorld',
+    image: '/images/parks/seaworld-shopping.jpg',
+    description: 'SeaWorld Orlando, Aquatica & Discovery Cove',
+    href: '/request?park=seaworld',
+  },
+];
 
 const features = [
   {
@@ -55,8 +77,20 @@ export default function HomePage() {
   return (
     <main className="pt-20">
       {/* Hero Section */}
-      <section className="bg-magic py-20 md:py-32">
-        <div className="container-wide">
+      <section className="relative py-20 md:py-32 overflow-hidden">
+        {/* Background Image */}
+        <div className="absolute inset-0 z-0">
+          <Image
+            src="/images/hero-bg.jpg"
+            alt="Theme park magic"
+            fill
+            className="object-cover"
+            priority
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-midnight/80 via-midnight/70 to-midnight/90" />
+        </div>
+
+        <div className="container-wide relative z-10">
           <div className="max-w-3xl mx-auto text-center">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -92,6 +126,49 @@ export default function HomePage() {
                 </Button>
               </div>
             </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Park Cards Section */}
+      <section className="py-16 md:py-24 bg-secondary">
+        <div className="container-wide">
+          <div className="text-center mb-12">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-foreground mb-4">
+              Shop From Your Favorite Parks
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              We cover all the major Orlando theme parks. Select your destination to get started.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {parkCards.map((park, i) => (
+              <motion.div
+                key={park.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+                viewport={{ once: true }}
+              >
+                <Link href={park.href} className="block group">
+                  <div className="relative rounded-2xl overflow-hidden shadow-card hover:shadow-elevated transition-all duration-300">
+                    <div className="aspect-[4/3] relative">
+                      <Image
+                        src={park.image}
+                        alt={park.name}
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+                      <h3 className="font-heading text-2xl font-bold mb-2">{park.name}</h3>
+                      <p className="text-white/80 text-sm">{park.description}</p>
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>

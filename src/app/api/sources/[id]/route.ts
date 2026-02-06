@@ -93,13 +93,17 @@ export async function DELETE(
   const supabase = getSupabaseAdmin();
   const { id } = await params;
 
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from('feed_sources')
-    .delete()
+    .delete({ count: 'exact' })
     .eq('id', id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (count === 0) {
+    return NextResponse.json({ error: 'Source not found' }, { status: 404 });
   }
 
   return NextResponse.json({ success: true });

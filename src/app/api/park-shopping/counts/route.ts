@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { RESORTS, getAllLocations } from '@/lib/park-shopping-config';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     const supabase = await createSupabaseServerClient();
 

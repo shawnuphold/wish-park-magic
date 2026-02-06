@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { formatDate, formatDateTime } from '@/lib/utils/dates';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -251,14 +252,14 @@ export default function ShipmentDetailPage() {
             {shipment.shipped_at && (
               <div>
                 <p className="text-sm text-muted-foreground">Shipped At</p>
-                <p>{new Date(shipment.shipped_at).toLocaleString()}</p>
+                <p>{formatDateTime(shipment.shipped_at)}</p>
               </div>
             )}
 
             {shipment.delivered_at && (
               <div>
                 <p className="text-sm text-muted-foreground">Delivered At</p>
-                <p>{new Date(shipment.delivered_at).toLocaleString()}</p>
+                <p>{formatDateTime(shipment.delivered_at)}</p>
               </div>
             )}
           </CardContent>

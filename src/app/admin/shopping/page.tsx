@@ -30,7 +30,8 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Park, ItemCategory } from '@/integrations/supabase/types';
+type Park = 'disney' | 'universal' | 'seaworld';
+type ItemCategory = 'clothing' | 'accessories' | 'toys' | 'home' | 'food' | 'collectibles' | 'other';
 import { ImageGallery } from '@/components/ImageGallery';
 
 interface ItemLocation {

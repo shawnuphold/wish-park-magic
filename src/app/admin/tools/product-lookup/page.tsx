@@ -438,13 +438,39 @@ export default function ProductLookupPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-2">
-                    <Button className="flex-1" variant="outline">
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      onClick={() => {
+                        if (result?.product) {
+                          const params = new URLSearchParams({
+                            name: result.product.name || '',
+                            park: result.product.park || '',
+                            store: result.product.store || '',
+                            price: result.product.price?.toString() || '',
+                          });
+                          window.location.href = `/admin/requests/new?${params.toString()}`;
+                        }
+                      }}
+                    >
                       <Plus className="w-4 h-4 mr-2" />
                       Add to Request
                     </Button>
-                    <Button className="flex-1" variant="outline">
-                      <Save className="w-4 h-4 mr-2" />
-                      Save to Database
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      onClick={() => {
+                        if (result?.product) {
+                          navigator.clipboard.writeText(JSON.stringify(result.product, null, 2));
+                          toast({
+                            title: 'Copied to clipboard',
+                            description: 'Product data copied. Paste into any request item.',
+                          });
+                        }
+                      }}
+                    >
+                      <Clipboard className="w-4 h-4 mr-2" />
+                      Copy Data
                     </Button>
                   </div>
                 </CardContent>

@@ -21,6 +21,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { createLogger } from '@/lib/logger';
+import { sendEmail } from '@/lib/email/mailer';
+import {
+  generateDeliverySubject,
+  generateDeliveryEmailHtml,
+  generateDeliveryEmailText,
+} from '@/lib/email/templates/shippingEmail';
 
 const log = createLogger('Shippo');
 
@@ -222,12 +228,29 @@ export async function POST(request: NextRequest) {
       // Send delivery notification email (if SMTP configured)
       if (SEND_EMAIL_NOTIFICATIONS) {
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://enchantedparkpickups.com';
-          await fetch(`${baseUrl}/api/email/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'delivery', id: shipment.id }),
-          });
+          // Get customer info for the email
+          const { data: shipmentData } = await supabase
+            .from('shipments')
+            .select(`
+              request:requests(customer:customers(name, email)),
+              customer:customers(name, email)
+            `)
+            .eq('id', shipment.id)
+            .single();
+
+          const requestData = shipmentData?.request as { customer: { name: string; email: string } } | null;
+          const directCustomer = shipmentData?.customer as { name: string; email: string } | null;
+          const customer = requestData?.customer || directCustomer;
+
+          if (customer?.email) {
+            await sendEmail({
+              to: customer.email,
+              subject: generateDeliverySubject(),
+              html: generateDeliveryEmailHtml({ customerName: customer.name.split(' ')[0] }),
+              text: generateDeliveryEmailText({ customerName: customer.name.split(' ')[0] }),
+            });
+            log.info('Delivery notification sent', { email: customer.email, shipmentId: shipment.id });
+          }
         } catch (emailError) {
           log.error('Failed to send delivery email', emailError);
         }

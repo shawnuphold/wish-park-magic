@@ -23,7 +23,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Search, Filter, ShoppingBag, DollarSign, Package, Loader2 } from 'lucide-react';
+import { Plus, Search, Filter, ShoppingBag, DollarSign, Package, Loader2, Pencil, Trash2, CheckCircle, MoreVertical } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Park, ItemCategory } from '@/lib/database.types';
 
@@ -87,6 +104,9 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState(initialFormState);
   const { toast } = useToast();
@@ -202,6 +222,154 @@ export default function InventoryPage() {
     }
   };
 
+  const handleEditClick = (item: InventoryItem) => {
+    setSelectedItem(item);
+    setFormData({
+      name: item.name,
+      description: item.description || '',
+      park: item.park,
+      category: item.category,
+      original_price: item.original_price.toString(),
+      selling_price: item.selling_price.toString(),
+      quantity: item.quantity.toString(),
+      image_url: item.image_url || '',
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleEditItem = async () => {
+    if (!selectedItem) return;
+
+    // Validate required fields
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' });
+      return;
+    }
+    if (!formData.park) {
+      toast({ title: 'Error', description: 'Park is required', variant: 'destructive' });
+      return;
+    }
+    if (!formData.category) {
+      toast({ title: 'Error', description: 'Category is required', variant: 'destructive' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from('unclaimed_inventory')
+        .update({
+          name: formData.name.trim(),
+          description: formData.description.trim() || null,
+          park: formData.park as Park,
+          category: formData.category as ItemCategory,
+          original_price: parseFloat(formData.original_price) || 0,
+          selling_price: parseFloat(formData.selling_price) || 0,
+          quantity: parseInt(formData.quantity) || 1,
+          image_url: formData.image_url.trim() || null,
+        })
+        .eq('id', selectedItem.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setItems((prev) => prev.map((i) => (i.id === selectedItem.id ? data : i)));
+      setEditModalOpen(false);
+      setSelectedItem(null);
+      setFormData(initialFormState);
+      toast({ title: 'Success', description: 'Item updated successfully' });
+    } catch (error: any) {
+      console.error('Error updating item:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update item',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteClick = (item: InventoryItem) => {
+    setSelectedItem(item);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteItem = async () => {
+    if (!selectedItem) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('unclaimed_inventory')
+        .delete()
+        .eq('id', selectedItem.id);
+
+      if (error) throw error;
+
+      setItems((prev) => prev.filter((i) => i.id !== selectedItem.id));
+      setDeleteDialogOpen(false);
+      setSelectedItem(null);
+      toast({ title: 'Success', description: 'Item deleted from inventory' });
+    } catch (error: any) {
+      console.error('Error deleting item:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete item',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMarkAsSold = async (item: InventoryItem) => {
+    try {
+      const { data, error } = await supabase
+        .from('unclaimed_inventory')
+        .update({ status: 'sold' })
+        .eq('id', item.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setItems((prev) => prev.map((i) => (i.id === item.id ? data : i)));
+      toast({ title: 'Success', description: `"${item.name}" marked as sold` });
+    } catch (error: any) {
+      console.error('Error marking item as sold:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update item',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleMarkAsAvailable = async (item: InventoryItem) => {
+    try {
+      const { data, error } = await supabase
+        .from('unclaimed_inventory')
+        .update({ status: 'available' })
+        .eq('id', item.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setItems((prev) => prev.map((i) => (i.id === item.id ? data : i)));
+      toast({ title: 'Success', description: `"${item.name}" marked as available` });
+    } catch (error: any) {
+      console.error('Error marking item as available:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update item',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -312,9 +480,43 @@ export default function InventoryPage() {
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <h3 className="font-medium line-clamp-2">{item.name}</h3>
-                      <Badge className={getStatusColor(item.status)}>
-                        {item.status}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge className={getStatusColor(item.status)}>
+                          {item.status}
+                        </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditClick(item)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            {item.status === 'available' ? (
+                              <DropdownMenuItem onClick={() => handleMarkAsSold(item)}>
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Mark as Sold
+                              </DropdownMenuItem>
+                            ) : item.status === 'sold' ? (
+                              <DropdownMenuItem onClick={() => handleMarkAsAvailable(item)}>
+                                <ShoppingBag className="mr-2 h-4 w-4" />
+                                Mark as Available
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteClick(item)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                     {item.description && (
                       <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
@@ -504,6 +706,193 @@ export default function InventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Item Modal */}
+      <Dialog open={editModalOpen} onOpenChange={(open) => {
+        setEditModalOpen(open);
+        if (!open) {
+          setFormData(initialFormState);
+          setSelectedItem(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+            <DialogDescription>
+              Update item details.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Item Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="edit-name">Item Name *</Label>
+              <Input
+                id="edit-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., Mickey Mouse Spirit Jersey"
+              />
+            </div>
+
+            {/* Description */}
+            <div className="grid gap-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Optional description..."
+                rows={2}
+              />
+            </div>
+
+            {/* Park & Category */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Park *</Label>
+                <Select
+                  value={formData.park}
+                  onValueChange={(value) => setFormData({ ...formData, park: value as Park })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select park" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parkOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Category *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => setFormData({ ...formData, category: value as ItemCategory })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Prices */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-original_price">Purchase Price *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input
+                    id="edit-original_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.original_price}
+                    onChange={(e) => setFormData({ ...formData, original_price: e.target.value })}
+                    className="pl-7"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-selling_price">Selling Price *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input
+                    id="edit-selling_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.selling_price}
+                    onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
+                    className="pl-7"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Quantity & Image URL */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-quantity">Quantity</Label>
+                <Input
+                  id="edit-quantity"
+                  type="number"
+                  min="1"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-image_url">Image URL</Label>
+                <Input
+                  id="edit-image_url"
+                  value={formData.image_url}
+                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  placeholder="https://..."
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditModalOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="gold" onClick={handleEditItem} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Item</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{selectedItem?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteItem}
+              disabled={saving}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

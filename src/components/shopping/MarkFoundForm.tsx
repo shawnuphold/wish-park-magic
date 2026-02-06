@@ -5,6 +5,7 @@ import { Camera, Loader2, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 import type { ShoppingItem } from './ShoppingItemCard';
 
 interface MarkFoundFormProps {
@@ -40,9 +41,12 @@ export function MarkFoundForm({ item, onSave, onCancel }: MarkFoundFormProps) {
       if (response.ok) {
         const data = await response.json();
         setPhotoUrl(data.url);
+      } else {
+        toast.error('Failed to upload photo');
       }
     } catch (error) {
       console.error('Error uploading photo:', error);
+      toast.error('Failed to upload photo');
     } finally {
       setUploading(false);
     }
@@ -65,9 +69,12 @@ export function MarkFoundForm({ item, onSave, onCancel }: MarkFoundFormProps) {
 
       if (response.ok) {
         onSave();
+      } else {
+        toast.error('Failed to save item');
       }
     } catch (error) {
       console.error('Error saving:', error);
+      toast.error('Failed to save item');
     } finally {
       setSaving(false);
     }

@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getCustomerAliases, addCustomerAlias } from '@/lib/customers/matchCustomer';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 // GET /api/customers/[id]/aliases - List all aliases for a customer
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   const { id: customerId } = await params;
 
   try {
@@ -26,6 +30,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   const { id: customerId } = await params;
 
   try {

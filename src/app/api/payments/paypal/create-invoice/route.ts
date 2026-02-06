@@ -3,7 +3,7 @@
  *
  * Creates a PayPal invoice for a given invoice ID and returns the payment URL.
  *
- * DISABLED BY DEFAULT - Set PAYPAL_CLIENT_ID and PAYPAL_SECRET to enable.
+ * DISABLED BY DEFAULT - Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to enable.
  * Use sandbox credentials for testing.
  */
 
@@ -22,7 +22,7 @@ const PAYPAL_BASE_URL = PAYPAL_MODE === 'live'
   : 'https://api-m.sandbox.paypal.com';
 
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
+const PAYPAL_SECRET = process.env.PAYPAL_CLIENT_SECRET;
 
 const isEnabled = !!(PAYPAL_CLIENT_ID && PAYPAL_SECRET);
 
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'PayPal integration not configured. Set PAYPAL_CLIENT_ID and PAYPAL_SECRET.',
+          error: 'PayPal integration not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.',
           disabled: true,
         },
         { status: 503 }

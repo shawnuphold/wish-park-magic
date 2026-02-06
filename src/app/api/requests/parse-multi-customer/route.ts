@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { parseMultiCustomerScreenshot, type MultiCustomerParseResult, type MultiCustomerRequest } from '@/lib/ai/parseScreenshot';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -137,6 +138,9 @@ async function findCustomerMatches(
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<EnrichedParseResult>> {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response as NextResponse<EnrichedParseResult>;
+
   try {
     const contentType = request.headers.get('content-type') || '';
 
@@ -271,6 +275,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnrichedP
 }
 
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   return NextResponse.json({
     endpoint: '/api/requests/parse-multi-customer',
     description: 'Parse customer message screenshots that may contain multiple customers, with automatic customer database matching',

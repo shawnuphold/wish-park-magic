@@ -14,7 +14,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const SHOP_ENABLED = process.env.ENABLE_SHOP === 'true';
+const SHOP_ENABLED = process.env.ENABLE_SHOP !== 'false';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,26 +25,26 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('unclaimed_inventory')
-      .select('id, name, description, price, image_url, park, category, quantity, is_limited_edition')
+      .select('id, name, description, selling_price, image_url, park, category, quantity')
       .gt('quantity', 0)
       .eq('status', 'available')
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching inventory:', error);
-      return NextResponse.json({ items: [] });
+      return NextResponse.json({ items: [], error: error.message });
     }
 
     // Transform to expected format
     const items = (data || []).map(item => ({
       id: item.id,
       title: item.name,
-      price: item.price || 0,
+      price: item.selling_price || 0,
       image: item.image_url || '/placeholder.svg',
       park: item.park,
       category: item.category,
       quantity: item.quantity,
-      isLimited: item.is_limited_edition,
+      isLimited: false,
     }));
 
     return NextResponse.json({ items });

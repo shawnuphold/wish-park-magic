@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/integrations/supabase/client';
+import { formatDate } from '@/lib/utils/dates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -262,7 +263,7 @@ export default function ShipmentsPage() {
                           )}
                           <span className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            {new Date(shipment.created_at).toLocaleDateString()}
+                            {formatDate(shipment.created_at)}
                           </span>
                         </div>
                       </div>

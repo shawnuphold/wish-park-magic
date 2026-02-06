@@ -448,7 +448,7 @@ export default function NewInvoicePage() {
                 </div>
                 {totalTax > 0 && (
                   <div className="flex justify-between text-sm text-muted-foreground">
-                    <span>Tax</span>
+                    <span>Tax (6.5%)</span>
                     <span>${totalTax.toFixed(2)}</span>
                   </div>
                 )}
@@ -558,7 +558,7 @@ export default function NewInvoicePage() {
                 <div className="col-span-3">Item</div>
                 <div className="col-span-1 text-center">Qty</div>
                 <div className="col-span-1 text-right">Price</div>
-                <div className="col-span-1 text-right">Tax</div>
+                <div className="col-span-1 text-right">Tax (6.5%)</div>
                 <div className="col-span-1 text-right">Pickup</div>
                 <div className="col-span-1 text-right">Ship</div>
                 <div className="col-span-1 text-right">Custom</div>

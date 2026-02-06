@@ -83,13 +83,12 @@ export function MarkFoundModal({ open, onOpenChange, item, tripId, onConfirm }: 
       }
 
       // Mark item as found
-      const response = await fetch(`/api/shopping-trips/${tripId}/items/${item.id}/found`, {
+      const response = await fetch(`/api/shopping/items/${item.id}/found`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          actual_price: actualPrice ? parseFloat(actualPrice) : null,
+          actual_price: actualPrice ? parseFloat(actualPrice) : item.estimated_price || 0,
           found_image_url,
-          trip_notes: notes || null,
         }),
       });
 

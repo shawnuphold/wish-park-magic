@@ -53,8 +53,9 @@ function SalesTaxCalculator() {
   const [reverseResult, setReverseResult] = useState<{ preTax: number; tax: number } | null>(null);
 
   const taxPresets = [
-    { label: 'Florida', value: '6.5' },
-    { label: 'Florida + Orange County', value: '6.5' },
+    { label: 'FL + Orange County', value: '6.5' },
+    { label: 'FL + Osceola County', value: '7.5' },
+    { label: 'Florida (base)', value: '6' },
     { label: 'No Tax', value: '0' },
   ];
 
@@ -222,6 +223,13 @@ function PayPalFeeCalculator() {
     toReceiveOriginal: number;
   } | null>(null);
 
+  // Reverse calculator state
+  const [wantToReceive, setWantToReceive] = useState('');
+  const [reverseResult, setReverseResult] = useState<{
+    chargeAmount: number;
+    fee: number;
+  } | null>(null);
+
   const feePresets: Record<string, { percent: number; fixed: number; label: string }> = {
     'paypal-checkout': { percent: 3.49, fixed: 0.49, label: 'PayPal Checkout' },
     'paypal-friends': { percent: 0, fixed: 0, label: 'PayPal Friends & Family' },
@@ -249,6 +257,22 @@ function PayPalFeeCalculator() {
       fee,
       youReceive,
       toReceiveOriginal
+    });
+  };
+
+  const calculateReverse = () => {
+    const wantNum = parseFloat(wantToReceive) || 0;
+    const preset = feePresets[feeType];
+    const percentRate = (feeType === 'custom' ? parseFloat(customPercent) : preset.percent) / 100;
+    const fixedFee = feeType === 'custom' ? parseFloat(customFixed) : preset.fixed;
+
+    // To receive wantNum after fees, charge this amount
+    const chargeAmount = (wantNum + fixedFee) / (1 - percentRate);
+    const fee = chargeAmount - wantNum;
+
+    setReverseResult({
+      chargeAmount,
+      fee,
     });
   };
 
@@ -302,9 +326,13 @@ function PayPalFeeCalculator() {
         </div>
       )}
 
-      {/* Amount Input */}
-      <div className="space-y-2">
-        <Label>Amount Customer Pays</Label>
+      {/* Forward Calculation Section */}
+      <div className="border rounded-lg p-4 space-y-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          <Calculator className="h-4 w-4" />
+          Forward: What You Receive (Customer Pays → You Get)
+        </div>
+
         <div className="flex gap-2">
           <div className="relative flex-1">
             <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -312,68 +340,93 @@ function PayPalFeeCalculator() {
               type="number"
               step="0.01"
               min="0"
-              placeholder="100.00"
+              placeholder="Customer pays this amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && calculateFees()}
-              className="pl-9 text-lg"
+              className="pl-9"
               inputMode="decimal"
             />
           </div>
-          <Button onClick={calculateFees} size="lg">
-            <Calculator className="w-4 h-4 mr-2" />
+          <Button onClick={calculateFees}>Calculate</Button>
+        </div>
+
+        {result && (
+          <Card className="bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-900">
+            <CardContent className="pt-4 pb-4">
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Customer Pays:</span>
+                  <span>${formatCurrency(result.amountEntered)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">- PayPal Fees:</span>
+                  <span className="text-red-600">-${formatCurrency(result.fee)}</span>
+                </div>
+                <div className="border-t pt-2 mt-2 flex justify-between items-center">
+                  <span className="font-bold text-base">You Receive:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-lg text-green-700 dark:text-green-400">${formatCurrency(result.youReceive)}</span>
+                    <CopyButton value={`$${formatCurrency(result.youReceive)}`} />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* REVERSE CALCULATION SECTION - Always visible! */}
+      <div className="border-2 border-amber-300 dark:border-amber-700 rounded-lg p-4 space-y-4 bg-amber-50/50 dark:bg-amber-950/30">
+        <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wide">
+          <RefreshCw className="h-4 w-4" />
+          Reverse: What To Charge (You Want → Customer Pays)
+        </div>
+
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="I want to receive this amount"
+              value={wantToReceive}
+              onChange={(e) => setWantToReceive(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && calculateReverse()}
+              className="pl-9"
+              inputMode="decimal"
+            />
+          </div>
+          <Button onClick={calculateReverse} variant="secondary" className="bg-amber-200 hover:bg-amber-300 dark:bg-amber-800 dark:hover:bg-amber-700">
             Calculate
           </Button>
         </div>
+
+        {reverseResult && (
+          <Card className="bg-amber-100 dark:bg-amber-900/50 border-amber-300 dark:border-amber-700">
+            <CardContent className="pt-4 pb-4">
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">You Want to Receive:</span>
+                  <span>${formatCurrency(parseFloat(wantToReceive) || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">+ PayPal Fees:</span>
+                  <span>+${formatCurrency(reverseResult.fee)}</span>
+                </div>
+                <div className="border-t pt-2 mt-2 flex justify-between items-center">
+                  <span className="font-bold text-base">Charge Customer:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-lg text-amber-700 dark:text-amber-300">${formatCurrency(reverseResult.chargeAmount)}</span>
+                    <CopyButton value={`$${formatCurrency(reverseResult.chargeAmount)}`} />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
-
-      {/* Results */}
-      {result && (
-        <Card className="bg-muted/50">
-          <CardContent className="pt-6 space-y-4">
-            {/* What You Receive */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center py-3 px-4 bg-green-100 dark:bg-green-950 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">💰</span>
-                  <span className="font-medium">Amount After Fees:</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-xl text-green-700 dark:text-green-400">
-                    ${formatCurrency(result.youReceive)}
-                  </span>
-                  <CopyButton value={`$${formatCurrency(result.youReceive)}`} />
-                </div>
-              </div>
-
-              <div className="flex justify-between text-sm text-muted-foreground px-1">
-                <span>💸 Fees Taken:</span>
-                <span className="text-red-600 dark:text-red-400">-${formatCurrency(result.fee)}</span>
-              </div>
-            </div>
-
-            <div className="border-t" />
-
-            {/* Reverse Calculation */}
-            <div className="py-3 px-4 bg-amber-50 dark:bg-amber-950/50 rounded-lg">
-              <div className="flex justify-between items-center flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🔄</span>
-                  <span className="text-sm">
-                    To receive <span className="font-bold">${formatCurrency(result.amountEntered)}</span>, request:
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-lg text-amber-700 dark:text-amber-400">
-                    ${formatCurrency(result.toReceiveOriginal)}
-                  </span>
-                  <CopyButton value={`$${formatCurrency(result.toReceiveOriginal)}`} />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
             .single();
 
           // Update invoice status
-          await supabase
+          const { error: invoiceUpdateError } = await supabase
             .from('invoices')
             .update({
               status: 'paid',
@@ -83,12 +83,20 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', invoiceId);
 
+          if (invoiceUpdateError) {
+            log.error('Failed to update invoice status', invoiceUpdateError, { invoiceId });
+          }
+
           // Update request status
           if (invoice?.request_id) {
-            await supabase
+            const { error: requestUpdateError } = await supabase
               .from('requests')
               .update({ status: 'paid' })
               .eq('id', invoice.request_id);
+
+            if (requestUpdateError) {
+              log.error('Failed to update request status', requestUpdateError, { requestId: invoice.request_id });
+            }
           }
 
           log.info('Invoice marked as paid', { invoiceId });

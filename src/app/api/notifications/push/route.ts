@@ -103,11 +103,19 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await supabase
+    const { error: deleteError } = await supabase
       .from('push_subscriptions')
       .delete()
       .eq('customer_id', customerId)
       .eq('endpoint', endpoint);
+
+    if (deleteError) {
+      console.error('Push unsubscribe error:', deleteError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to unsubscribe' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true });
 

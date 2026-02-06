@@ -116,15 +116,42 @@ export default function RequestPage() {
     setIsSubmitting(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Upload images first if any
+      let imageUrls: string[] = [];
+      // Note: For now, images are not uploaded to server - would need S3/Supabase storage
+      // This is a placeholder for future image upload implementation
 
-      // Generate a fake request ID
-      const requestId = `REQ-${Date.now().toString(36).toUpperCase()}`;
-      setSubmitSuccess({ requestId });
+      // Submit request to API
+      const response = await fetch('/api/public/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          shippingAddress: formData.shippingAddress,
+          park: formData.park,
+          timeSensitive: formData.timeSensitive,
+          neededByDate: formData.neededByDate || undefined,
+          itemDescription: formData.itemDescription,
+          referenceUrls: formData.referenceUrls || undefined,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit request');
+      }
+
+      setSubmitSuccess({ requestId: data.requestId });
       toast.success('Request submitted successfully!');
-    } catch {
-      toast.error('Failed to submit request. Please try again.');
+    } catch (error) {
+      console.error('Request submission error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to submit request. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

@@ -38,7 +38,6 @@ import {
   UserPlus,
   Camera,
   MapPin,
-  Image as ImageIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -1047,7 +1046,7 @@ export function SmartScreenshotParser({ customerId, customerName }: SmartScreens
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label>Category</Label>
                         <Select
@@ -1071,6 +1070,17 @@ export function SmartScreenshotParser({ customerId, customerName }: SmartScreens
                           min="1"
                           value={merchandiseQuantity}
                           onChange={(e) => setMerchandiseQuantity(parseInt(e.target.value) || 1)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Estimated Price</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="$0.00"
+                          value={merchandiseItem.estimated_price || ''}
+                          onChange={(e) => setMerchandiseItem({ ...merchandiseItem, estimated_price: e.target.value ? parseFloat(e.target.value) : null })}
                         />
                       </div>
                     </div>

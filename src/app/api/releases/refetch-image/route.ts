@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { extractImagesFromHtml } from '@/lib/images/releaseImages';
 import * as cheerio from 'cheerio';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -96,6 +97,9 @@ function extractImagesFromPage(html: string, baseUrl: string): string[] {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     const { releaseId, sourceUrl } = await request.json();
 

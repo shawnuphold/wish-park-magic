@@ -99,12 +99,16 @@ export default function TripsPage() {
   // Get dates with trips for calendar highlighting
   const tripDates = trips.map((t) => new Date(t.date + 'T00:00:00'));
 
+  // Use T00:00:00 to ensure local timezone interpretation (not UTC)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const upcomingTrips = trips.filter(
-    (t) => t.status === 'planned' && new Date(t.date) >= new Date()
+    (t) => t.status === 'planned' && new Date(t.date + 'T00:00:00') >= today
   );
 
   const pastTrips = trips.filter(
-    (t) => t.status !== 'planned' || new Date(t.date) < new Date()
+    (t) => t.status !== 'planned' || new Date(t.date + 'T00:00:00') < today
   );
 
   if (loading) {

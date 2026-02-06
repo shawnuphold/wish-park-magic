@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 // Disable caching for this route
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ park: string }> }
 ) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     const { park } = await params;
     const parent = PARK_PARENTS[park];

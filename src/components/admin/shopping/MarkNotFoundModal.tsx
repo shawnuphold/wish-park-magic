@@ -40,12 +40,11 @@ export function MarkNotFoundModal({ open, onOpenChange, item, tripId, onConfirm 
 
     setSubmitting(true);
     try {
-      const response = await fetch(`/api/shopping-trips/${tripId}/items/${item.id}/not-found`, {
+      const response = await fetch(`/api/shopping/items/${item.id}/not-found`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          reason,
-          trip_notes: notes || null,
+          reason: reason === 'not_found' ? 'cant_find' : reason,
         }),
       });
 

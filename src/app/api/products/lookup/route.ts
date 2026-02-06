@@ -8,8 +8,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { lookupProduct } from '@/lib/ai/productLookup';
+import { requireAdminAuth } from '@/lib/auth/api-auth';
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   try {
     const body = await request.json();
     const { imageBase64 } = body;
@@ -70,6 +74,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  const auth = await requireAdminAuth();
+  if (!auth.success) return auth.response;
+
   return NextResponse.json({
     endpoint: '/api/products/lookup',
     method: 'POST',

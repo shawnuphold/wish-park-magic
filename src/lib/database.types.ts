@@ -100,10 +100,12 @@ export interface Database {
           facebook_name: string | null
           facebook_profile_url: string | null
           telegram_username: string | null
+          // Stripe fields
+          stripe_customer_id: string | null
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['customers']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Insert: Omit<Database['public']['Tables']['customers']['Row'], 'id' | 'created_at' | 'updated_at' | 'stripe_customer_id'>
         Update: Partial<Database['public']['Tables']['customers']['Insert']>
       }
       customer_aliases: {
@@ -146,6 +148,7 @@ export interface Database {
           description: string | null
           category: ItemCategory
           park: Park
+          specific_park: string | null  // e.g., "Magic Kingdom", "EPCOT", "Islands of Adventure"
           store_name: string | null
           land_name: string | null
           reference_url: string | null
@@ -158,7 +161,17 @@ export interface Database {
           is_specialty: boolean
           status: 'pending' | 'found' | 'not_found' | 'substituted'
           found_image_url: string | null
+          found_images: string[] | null
+          receipt_image: string | null
+          found_location_id: string | null
+          found_at: string | null
           notes: string | null
+          size: string | null
+          color: string | null
+          variant: string | null
+          customer_notes: string | null
+          not_found_reason: string | null
+          quantity_found: number
           matched_release_id: string | null
           // Shopping trip fields
           shopping_trip_id: string | null
@@ -168,7 +181,7 @@ export interface Database {
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['request_items']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Insert: Omit<Database['public']['Tables']['request_items']['Row'], 'id' | 'created_at' | 'updated_at' | 'quantity_found' | 'found_images' | 'receipt_image' | 'found_location_id' | 'found_at'>
         Update: Partial<Database['public']['Tables']['request_items']['Insert']>
       }
       shopping_trips: {
@@ -214,10 +227,12 @@ export interface Database {
           cc_fee_percentage: number
           cc_fee_manual_amount: number | null
           cc_fee_amount: number
+          // Stripe fields
+          stripe_session_id: string | null
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['invoices']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Insert: Omit<Database['public']['Tables']['invoices']['Row'], 'id' | 'created_at' | 'updated_at' | 'stripe_session_id'>
         Update: Partial<Database['public']['Tables']['invoices']['Insert']>
       }
       invoice_items: {
@@ -313,12 +328,17 @@ export interface Database {
           images: ReleaseImage[]
           // Original full-size image before AI cropping (for manual re-crop)
           original_image_url: string | null
+          // Location data
+          locations: Json
+          // Dedup fields (auto-populated by trigger)
+          title_normalized: string | null
+          source_product_hash: string | null
           // Data retention
           expires_at: string | null
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['new_releases']['Row'], 'id' | 'created_at' | 'updated_at' | 'park_exclusive' | 'expires_at'>
+        Insert: Omit<Database['public']['Tables']['new_releases']['Row'], 'id' | 'created_at' | 'updated_at' | 'park_exclusive' | 'expires_at' | 'locations' | 'title_normalized' | 'source_product_hash'>
         Update: Partial<Database['public']['Tables']['new_releases']['Insert']>
       }
       // Article sources that mention a product (many-to-one)

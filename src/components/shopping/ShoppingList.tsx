@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, RefreshCw, Package, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { StoreSection } from './StoreSection';
 import type { ShoppingItem } from './ShoppingItemCard';
 
@@ -44,6 +45,7 @@ export function ShoppingList({ parkCode }: ShoppingListProps) {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
+      toast.error('Failed to load shopping list');
     } finally {
       setLoading(false);
       setRefreshing(false);
