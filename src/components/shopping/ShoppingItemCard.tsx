@@ -14,7 +14,6 @@ export interface ShoppingItem {
   description?: string | null;
   category?: string | null;
   park?: string | null;
-  specific_park?: string | null;  // e.g., "Magic Kingdom", "EPCOT"
   store_name?: string | null;
   land_name?: string | null;
   quantity?: number;
@@ -179,11 +178,11 @@ export function ShoppingItemCard({ item, onUpdate }: ShoppingItemCardProps) {
         </div>
 
         {/* Store location - show specific park, land, and store */}
-        {(item.specific_park || item.store_name || item.land_name) && (
+        {(item.store_name || item.land_name) && (
           <div className="flex items-center gap-1.5 text-gray-500">
             <MapPin className="w-4 h-4 flex-shrink-0" />
             <span className="text-sm">
-              {[item.specific_park, item.land_name, item.store_name]
+              {[item.land_name, item.store_name]
                 .filter(Boolean)
                 .join(' • ')}
             </span>

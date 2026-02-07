@@ -202,7 +202,26 @@ export default function NewReleasesPage() {
 
     setSubmitting(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch('/api/public/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: requestForm.name,
+          email: requestForm.email,
+          phone: requestForm.phone || '',
+          shippingAddress: '',
+          park: selectedRelease.park || 'disney',
+          timeSensitive: false,
+          itemDescription: selectedRelease.title,
+          referenceUrls: selectedRelease.source_url || '',
+          notes: requestForm.notes || '',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to submit request');
+      }
 
       toast({
         title: 'Request Submitted!',
@@ -212,10 +231,10 @@ export default function NewReleasesPage() {
       setShowRequestModal(false);
       setSelectedRelease(null);
       setRequestForm({ name: '', email: '', phone: '', notes: '' });
-    } catch {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to submit request. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to submit request. Please try again.',
         variant: 'destructive',
       });
     } finally {

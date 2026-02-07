@@ -12,7 +12,8 @@ export async function POST(request: NextRequest) {
   if (!auth.success) return auth.response;
 
   try {
-    const { name, trip_date, park, parks, notes, item_ids, request_ids, shopper_id } = await request.json();
+    const body = await request.json();
+    const { name, trip_date, park, parks, notes, item_ids, request_ids, shopper_id } = body;
 
     // Support both flows: CreateTripModal sends park (specific), trips/new sends parks (array)
     if (!trip_date && !park && (!parks || parks.length === 0)) {
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
         .in('request_id', request_ids);
 
       if (itemAssignError) {
-        console.error('Error assigning request items to trip:', itemAssignError);
+        console.error('Error assigning request items:', itemAssignError);
       }
     }
 

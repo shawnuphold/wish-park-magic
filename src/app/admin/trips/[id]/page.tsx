@@ -44,7 +44,7 @@ interface TripRequest {
   id: string;
   status: string;
   customer: { name: string };
-  items: { id: string; name: string; status: string; park: Park; specific_park: string | null; store_name: string | null; land_name: string | null }[];
+  items: { id: string; name: string; status: string; park: Park; store_name: string | null; land_name: string | null }[];
 }
 
 interface ShoppingTrip {
@@ -100,7 +100,7 @@ export default function TripDetailPage() {
           id,
           status,
           customer:customers(name),
-          items:request_items(id, name, status, park, specific_park, store_name, land_name)
+          items:request_items(id, name, status, park, store_name, land_name)
         `)
         .eq('shopping_trip_id', id);
 
@@ -263,7 +263,7 @@ export default function TripDetailPage() {
 
   // Group items by park and then by store for easy shopping
   type GroupedItem = { requestId: string; customerName: string; item: TripRequest['items'][0] };
-  type StoreGroup = { store: string; land: string | null; specificPark: string | null; items: GroupedItem[] };
+  type StoreGroup = { store: string; land: string | null; items: GroupedItem[] };
 
   const itemsByParkAndStore: Record<Park, StoreGroup[]> = {
     disney: [],
@@ -276,14 +276,13 @@ export default function TripDetailPage() {
       if (trip.parks.includes(item.park)) {
         const storeName = item.store_name || 'General / Unknown Location';
         const landName = item.land_name || null;
-        const specificPark = item.specific_park || null;
 
-        // Find or create store group (match on store + land + specific park)
+        // Find or create store group (match on store + land)
         let storeGroup = itemsByParkAndStore[item.park].find(
-          g => g.store === storeName && g.specificPark === specificPark
+          g => g.store === storeName
         );
         if (!storeGroup) {
-          storeGroup = { store: storeName, land: landName, specificPark, items: [] };
+          storeGroup = { store: storeName, land: landName, items: [] };
           itemsByParkAndStore[item.park].push(storeGroup);
         }
 
@@ -513,9 +512,6 @@ export default function TripDetailPage() {
                         {/* Store/Location Header */}
                         <div className="flex items-center gap-2 pb-2 border-b flex-wrap">
                           <MapPin className="w-4 h-4 text-gold flex-shrink-0" />
-                          {storeGroup.specificPark && (
-                            <span className="font-semibold text-gold">{storeGroup.specificPark}</span>
-                          )}
                           {storeGroup.land && (
                             <span className="text-sm text-muted-foreground">• {storeGroup.land}</span>
                           )}

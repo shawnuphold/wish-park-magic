@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
   try {
     const body: RequestSubmission = await request.json();
 
-    // Validate required fields
-    if (!body.fullName || !body.email || !body.phone || !body.shippingAddress || !body.park || !body.itemDescription) {
+    // Validate required fields (phone and shippingAddress are optional for quick request forms)
+    if (!body.fullName || !body.email || !body.park || !body.itemDescription) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
