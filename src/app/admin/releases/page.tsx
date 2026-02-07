@@ -259,22 +259,26 @@ export default function ReleasesPage() {
 
   const handleMarkAvailable = async (id: string) => {
     try {
-      const { error } = await supabase
+      const { data: updatedRows, error } = await supabase
         .from('new_releases')
         .update({
           status: 'available',
           actual_release_date: new Date().toISOString().split('T')[0],
         } as any)
-        .eq('id', id);
+        .eq('id', id)
+        .select();
 
       if (error) throw error;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('Update blocked - you may not have permission to edit this release.');
+      }
 
       toast({ title: 'Marked as Available' });
       await fetchReleases();
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to update release',
+        description: error instanceof Error ? error.message : 'Failed to update release',
         variant: 'destructive',
       });
     }
@@ -723,34 +727,27 @@ export default function ReleasesPage() {
                       className="overflow-hidden group cursor-pointer hover:shadow-md transition-shadow"
                       onClick={() => router.push(`/admin/releases/${release.id}`)}
                     >
-                      {release.image_url && (
-                        <div className="aspect-video bg-muted relative flex items-center justify-center">
-                          <img
-                            src={release.image_url}
-                            alt={release.title}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const img = e.target as HTMLImageElement;
-                              img.style.display = 'none';
-                              const placeholder = document.createElement('span');
-                              placeholder.className = 'text-muted-foreground text-sm';
-                              placeholder.textContent = 'Image unavailable';
-                              img.parentElement?.appendChild(placeholder);
-                            }}
-                          />
-                          <div className="absolute top-2 left-2 flex gap-1">
-                            <Badge className={getStatusColor(release.status)}>
-                              {getStatusLabel(release.status)}
-                            </Badge>
-                          </div>
-                          {release.is_featured && (
-                            <Badge className="absolute top-2 right-2 bg-gold text-white">
-                              <Star className="w-3 h-3 mr-1" />
-                              Featured
-                            </Badge>
-                          )}
+                      <div className="aspect-video bg-muted relative flex items-center justify-center">
+                        <img
+                          src={release.image_url || '/images/no-image-placeholder.png'}
+                          alt={release.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/images/no-image-placeholder.png';
+                          }}
+                        />
+                        <div className="absolute top-2 left-2 flex gap-1">
+                          <Badge className={getStatusColor(release.status)}>
+                            {getStatusLabel(release.status)}
+                          </Badge>
                         </div>
-                      )}
+                        {release.is_featured && (
+                          <Badge className="absolute top-2 right-2 bg-gold text-white">
+                            <Star className="w-3 h-3 mr-1" />
+                            Featured
+                          </Badge>
+                        )}
+                      </div>
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h3 className="font-medium line-clamp-2">{release.title}</h3>
@@ -877,23 +874,16 @@ export default function ReleasesPage() {
                       className="flex gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => router.push(`/admin/releases/${release.id}`)}
                     >
-                      {release.image_url && (
-                        <div className="w-24 h-24 bg-muted rounded flex items-center justify-center flex-shrink-0">
-                          <img
-                            src={release.image_url}
-                            alt={release.title}
-                            className="w-full h-full object-cover rounded"
-                            onError={(e) => {
-                              const img = e.target as HTMLImageElement;
-                              img.style.display = 'none';
-                              const placeholder = document.createElement('span');
-                              placeholder.className = 'text-muted-foreground text-xs text-center';
-                              placeholder.textContent = 'No image';
-                              img.parentElement?.appendChild(placeholder);
-                            }}
-                          />
-                        </div>
-                      )}
+                      <div className="w-24 h-24 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                        <img
+                          src={release.image_url || '/images/no-image-placeholder.png'}
+                          alt={release.title}
+                          className="w-full h-full object-cover rounded"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/images/no-image-placeholder.png';
+                          }}
+                        />
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-4">
                           <div>

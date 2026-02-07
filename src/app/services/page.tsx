@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { SectionHeading } from '@/components/SectionHeading';
 import { CategoryCard } from '@/components/CategoryCard';
@@ -33,6 +34,12 @@ const categories = [
   { icon: Utensils, name: 'Kitchen & Dining' },
   { icon: Sparkles, name: 'Collectibles' },
 ];
+
+const parkImages: Record<string, string> = {
+  disney: '/images/parks/castle-fireworks.jpg',
+  universal: '/images/parks/wizard-castle.jpg',
+  seaworld: '/images/parks/seaworld-shopping.jpg',
+};
 
 const disneyLocations = [
   'Magic Kingdom',
@@ -104,6 +111,16 @@ export default function ServicesPage() {
             </p>
           </motion.div>
 
+          <div className="relative h-64 md:h-80 rounded-2xl overflow-hidden mb-8">
+            <Image
+              src={parkImages.disney}
+              alt="Walt Disney World"
+              fill
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {disneyLocations.map((location, i) => (
               <motion.div
@@ -140,6 +157,16 @@ export default function ServicesPage() {
               the entire Universal Orlando experience.
             </p>
           </motion.div>
+
+          <div className="relative h-64 md:h-80 rounded-2xl overflow-hidden mb-8">
+            <Image
+              src={parkImages.universal}
+              alt="Universal Orlando Resort"
+              fill
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+          </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl">
             {universalLocations.map((location, i) => (
@@ -189,6 +216,16 @@ export default function ServicesPage() {
               that you won't find anywhere else.
             </p>
           </motion.div>
+
+          <div className="relative h-64 md:h-80 rounded-2xl overflow-hidden mb-8">
+            <Image
+              src={parkImages.seaworld}
+              alt="SeaWorld Orlando"
+              fill
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+          </div>
 
           <div className="grid grid-cols-2 gap-4 max-w-md">
             {seaworldLocations.map((location, i) => (

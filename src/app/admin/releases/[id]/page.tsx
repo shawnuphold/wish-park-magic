@@ -235,35 +235,44 @@ export default function ReleaseDetailPage() {
         updateData.sold_out_date = new Date().toISOString().split('T')[0];
       }
 
-      const { error, count } = await supabase
-        .from('new_releases')
-        .update(updateData)
-        .eq('id', id)
-        .select();
+      // Route through API to use admin client (bypasses RLS)
+      const response = await fetch(`/api/releases/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      });
 
-      if (error) throw error;
-
-      // Check if any rows were actually updated (RLS may silently block)
-      if (count === 0) {
-        throw new Error('Update blocked - you may not have permission to edit this release. Please contact an administrator.');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save changes');
       }
 
-      // Re-fetch to confirm the update
-      const { data: updated } = await supabase
-        .from('new_releases')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const { release: updated } = await response.json();
 
-      if (updated) {
-        setRelease(updated as NewRelease);
-      }
+      setRelease(updated as NewRelease);
+
+      // Sync form state with saved data
+      setFormData({
+        title: updated.title,
+        description: updated.description || '',
+        image_url: updated.image_url || '',
+        status: updated.status || 'announced',
+        park: updated.park,
+        category: updated.category,
+        price_estimate: updated.price_estimate?.toString() || '',
+        is_limited_edition: updated.is_limited_edition,
+        is_featured: updated.is_featured,
+        projected_release_date: updated.projected_release_date || '',
+        actual_release_date: updated.actual_release_date || '',
+        ai_tags: updated.ai_tags?.join(', ') || '',
+        location: updated.location || '',
+      });
 
       toast({ title: 'Release Updated' });
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to save changes',
+        description: error instanceof Error ? error.message : 'Failed to save changes',
         variant: 'destructive',
       });
     } finally {
@@ -273,28 +282,47 @@ export default function ReleaseDetailPage() {
 
   const handleMarkAvailable = async () => {
     const today = new Date().toISOString().split('T')[0];
-    setFormData({
+    const updatedForm = {
       ...formData,
       status: 'available',
       actual_release_date: today,
-    });
+    };
+    setFormData(updatedForm);
 
-    // Also save immediately
     try {
-      await supabase
-        .from('new_releases')
-        .update({
-          status: 'available',
-          actual_release_date: today,
-        } as any)
-        .eq('id', id);
+      const updateData: Record<string, unknown> = {
+        title: updatedForm.title,
+        description: updatedForm.description || null,
+        image_url: updatedForm.image_url || null,
+        status: 'available',
+        park: updatedForm.park,
+        category: updatedForm.category,
+        price_estimate: updatedForm.price_estimate ? parseFloat(updatedForm.price_estimate) : null,
+        is_limited_edition: updatedForm.is_limited_edition,
+        is_featured: updatedForm.is_featured,
+        projected_release_date: updatedForm.projected_release_date || null,
+        actual_release_date: today,
+        ai_tags: updatedForm.ai_tags ? updatedForm.ai_tags.split(',').map(t => t.trim()).filter(Boolean) : null,
+        location: updatedForm.location || null,
+      };
+
+      const response = await fetch(`/api/releases/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update status');
+      }
 
       toast({ title: 'Marked as Available' });
       router.refresh();
-    } catch {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to update status',
+        description: error instanceof Error ? error.message : 'Failed to update status',
         variant: 'destructive',
       });
     }
@@ -302,26 +330,47 @@ export default function ReleaseDetailPage() {
 
   const handleMarkSoldOut = async () => {
     const today = new Date().toISOString().split('T')[0];
-    setFormData({
+    const updatedForm = {
       ...formData,
       status: 'sold_out',
-    });
+    };
+    setFormData(updatedForm);
 
     try {
-      await supabase
-        .from('new_releases')
-        .update({
-          status: 'sold_out',
-          sold_out_date: today,
-        } as any)
-        .eq('id', id);
+      const updateData: Record<string, unknown> = {
+        title: updatedForm.title,
+        description: updatedForm.description || null,
+        image_url: updatedForm.image_url || null,
+        status: 'sold_out',
+        park: updatedForm.park,
+        category: updatedForm.category,
+        price_estimate: updatedForm.price_estimate ? parseFloat(updatedForm.price_estimate) : null,
+        is_limited_edition: updatedForm.is_limited_edition,
+        is_featured: updatedForm.is_featured,
+        projected_release_date: updatedForm.projected_release_date || null,
+        actual_release_date: updatedForm.actual_release_date || null,
+        ai_tags: updatedForm.ai_tags ? updatedForm.ai_tags.split(',').map(t => t.trim()).filter(Boolean) : null,
+        location: updatedForm.location || null,
+        sold_out_date: today,
+      };
+
+      const response = await fetch(`/api/releases/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update status');
+      }
 
       toast({ title: 'Marked as Sold Out' });
       router.refresh();
-    } catch {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to update status',
+        description: error instanceof Error ? error.message : 'Failed to update status',
         variant: 'destructive',
       });
     }
@@ -331,19 +380,18 @@ export default function ReleaseDetailPage() {
     if (!confirm('Are you sure you want to delete this release?')) return;
 
     try {
-      const { error } = await supabase
-        .from('new_releases')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      const response = await fetch(`/api/releases/${id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete release');
+      }
 
       toast({ title: 'Release Deleted' });
       router.push('/admin/releases');
-    } catch {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to delete release',
+        description: error instanceof Error ? error.message : 'Failed to delete release',
         variant: 'destructive',
       });
     }
@@ -431,13 +479,13 @@ export default function ReleaseDetailPage() {
       // Update form with new URL
       setFormData({ ...formData, image_url: fileUrl });
 
-      // Save to database immediately
-      const { error } = await supabase
-        .from('new_releases')
-        .update({ image_url: fileUrl })
-        .eq('id', id);
-
-      if (error) throw error;
+      // Save to database immediately via API
+      const saveResponse = await fetch(`/api/releases/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: fileUrl }),
+      });
+      if (!saveResponse.ok) throw new Error('Failed to save image URL');
 
       toast({ title: 'Image uploaded and saved' });
       router.refresh();
@@ -754,14 +802,14 @@ export default function ReleaseDetailPage() {
                     onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
                     onBlur={async (e) => {
                       const newUrl = e.target.value;
-                      // Save to database when URL is changed and field loses focus
                       if (newUrl !== release?.image_url) {
                         try {
-                          const { error } = await supabase
-                            .from('new_releases')
-                            .update({ image_url: newUrl || null })
-                            .eq('id', id);
-                          if (error) throw error;
+                          const resp = await fetch(`/api/releases/${id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image_url: newUrl || null }),
+                          });
+                          if (!resp.ok) throw new Error('Failed to save');
                           toast({ title: 'Image URL saved' });
                           router.refresh();
                         } catch (err) {
@@ -1194,14 +1242,14 @@ export default function ReleaseDetailPage() {
             setShowCropper(false);
             setCropImageUrl('');
 
-            // Save cropped image to database immediately
+            // Save cropped image to database immediately via API
             try {
-              const { error } = await supabase
-                .from('new_releases')
-                .update({ image_url: croppedUrl })
-                .eq('id', id);
-
-              if (error) throw error;
+              const resp = await fetch(`/api/releases/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image_url: croppedUrl }),
+              });
+              if (!resp.ok) throw new Error('Failed to save');
               toast({ title: 'Cropped image saved successfully' });
               router.refresh();
             } catch (err) {

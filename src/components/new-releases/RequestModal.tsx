@@ -84,11 +84,34 @@ export function RequestModal({ product, isOpen, onClose }: RequestModalProps) {
 
     setIsSubmitting(true);
 
-    // Simulate form submission (frontend-only)
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch('/api/public/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: result.data.name,
+          email: result.data.email,
+          phone: result.data.phone || '',
+          shippingAddress: '',
+          park: 'disney',
+          timeSensitive: false,
+          itemDescription: `${product.title}${result.data.quantity > 1 ? ` (Qty: ${result.data.quantity})` : ''}`,
+          referenceUrls: '',
+          notes: result.data.notes || '',
+        }),
+      });
 
-    setIsSuccess(true);
-    setIsSubmitting(false);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to submit request');
+      }
+
+      setIsSuccess(true);
+    } catch (err) {
+      setErrors({ form: err instanceof Error ? err.message : 'Failed to submit request. Please try again.' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!product) return null;

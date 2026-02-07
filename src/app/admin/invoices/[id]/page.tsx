@@ -298,6 +298,9 @@ export default function InvoiceDetailPage() {
     if (!invoice) return;
     setSavingItem(true);
 
+    // Auto-calculate tax at 6.5% of item subtotal
+    const autoTax = Math.round((item.quantity || 1) * (item.unit_price || 0) * 0.065 * 100) / 100;
+
     try {
       if (isNew) {
         // Insert new item
@@ -309,7 +312,7 @@ export default function InvoiceDetailPage() {
             description: item.description || null,
             quantity: item.quantity,
             unit_price: item.unit_price,
-            tax_amount: item.tax_amount,
+            tax_amount: autoTax,
             pickup_fee: item.pickup_fee,
             shipping_fee: item.shipping_fee,
             custom_fee_label: item.custom_fee_label || null,
@@ -352,7 +355,7 @@ export default function InvoiceDetailPage() {
             description: fullItem.description || null,
             quantity: fullItem.quantity,
             unit_price: fullItem.unit_price,
-            tax_amount: fullItem.tax_amount,
+            tax_amount: autoTax,
             pickup_fee: fullItem.pickup_fee,
             shipping_fee: fullItem.shipping_fee,
             custom_fee_label: fullItem.custom_fee_label || null,
@@ -1230,13 +1233,15 @@ export default function InvoiceDetailPage() {
               <p className="text-sm font-medium">Fees</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Tax ($)</Label>
+                  <Label>Tax (6.5% auto)</Label>
                   <Input
                     type="number"
                     step="0.01"
                     min="0"
-                    value={editingItem.tax_amount}
-                    onChange={(e) => setEditingItem({ ...editingItem, tax_amount: parseFloat(e.target.value) || 0 })}
+                    value={(Math.round((editingItem.quantity || 1) * (editingItem.unit_price || 0) * 0.065 * 100) / 100) || ''}
+                    readOnly
+                    className="bg-muted"
+                    title="Auto-calculated: subtotal × 6.5%"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1360,13 +1365,15 @@ export default function InvoiceDetailPage() {
             <p className="text-sm font-medium">Fees (optional)</p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Tax ($)</Label>
+                <Label>Tax (6.5% auto)</Label>
                 <Input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={newItem.tax_amount || ''}
-                  onChange={(e) => setNewItem({ ...newItem, tax_amount: parseFloat(e.target.value) || 0 })}
+                  value={(Math.round((newItem.quantity || 1) * (newItem.unit_price || 0) * 0.065 * 100) / 100) || ''}
+                  readOnly
+                  className="bg-muted"
+                  title="Auto-calculated: subtotal × 6.5%"
                 />
               </div>
               <div className="space-y-2">

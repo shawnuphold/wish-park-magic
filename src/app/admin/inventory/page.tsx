@@ -589,43 +589,37 @@ export default function InventoryPage() {
               />
             </div>
 
-            {/* Park & Category */}
+            {/* Park & Category - Using native selects to avoid Radix UI infinite loop bug in Dialog */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Park *</Label>
-                <Select
+                <select
                   value={formData.park}
-                  onValueChange={(value) => setFormData({ ...formData, park: value as Park })}
+                  onChange={(e) => setFormData({ ...formData, park: e.target.value as Park })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select park" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {parkOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="">Select park</option>
+                  {parkOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid gap-2">
                 <Label>Category *</Label>
-                <Select
+                <select
                   value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value as ItemCategory })}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value as ItemCategory })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoryOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="">Select category</option>
+                  {categoryOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -747,43 +741,37 @@ export default function InventoryPage() {
               />
             </div>
 
-            {/* Park & Category */}
+            {/* Park & Category - Using native selects to avoid Radix UI infinite loop bug in Dialog */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Park *</Label>
-                <Select
+                <select
                   value={formData.park}
-                  onValueChange={(value) => setFormData({ ...formData, park: value as Park })}
+                  onChange={(e) => setFormData({ ...formData, park: e.target.value as Park })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select park" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {parkOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="">Select park</option>
+                  {parkOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid gap-2">
                 <Label>Category *</Label>
-                <Select
+                <select
                   value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value as ItemCategory })}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value as ItemCategory })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoryOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="">Select category</option>
+                  {categoryOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

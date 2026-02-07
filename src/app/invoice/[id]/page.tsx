@@ -295,6 +295,14 @@ export default function CustomerInvoicePage() {
                   <span>${invoice.shipping_amount.toFixed(2)}</span>
                 </div>
               )}
+              {invoice.cc_fee_enabled && invoice.cc_fee_amount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    CC Processing Fee ({invoice.cc_fee_percentage || 3}%)
+                  </span>
+                  <span>${invoice.cc_fee_amount.toFixed(2)}</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between text-xl font-bold">
                 <span>Total Due</span>
@@ -315,22 +323,38 @@ export default function CustomerInvoicePage() {
               </>
             )}
 
-            {/* Payment Instructions - Only show for unpaid invoices */}
+            {/* Payment Section - Only show for unpaid invoices */}
             {(invoice.status === 'sent' || invoice.status === 'draft') && (
               <>
                 <Separator />
                 <div className="bg-muted/50 rounded-lg p-4 print:bg-gray-100">
-                  <h3 className="font-medium mb-2">Payment Instructions</h3>
-                  <p className="text-sm text-muted-foreground">
-                    You will receive payment instructions via email. If you have any
-                    questions, please contact us at{' '}
-                    <a
-                      href="mailto:hello@enchantedparkpickups.com"
-                      className="text-gold hover:underline"
-                    >
-                      hello@enchantedparkpickups.com
-                    </a>
-                  </p>
+                  <h3 className="font-medium mb-2">Payment</h3>
+                  {invoice.paypal_invoice_id ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        A PayPal invoice has been sent to your email. You can also pay directly using the button below.
+                      </p>
+                      <a
+                        href={`https://www.paypal.com/invoice/p/#${invoice.paypal_invoice_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center rounded-md bg-[#0070ba] px-6 py-3 text-sm font-medium text-white hover:bg-[#005ea6] transition-colors"
+                      >
+                        Pay with PayPal
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      You will receive payment instructions via email. If you have any
+                      questions, please contact us at{' '}
+                      <a
+                        href="mailto:hello@enchantedparkpickups.com"
+                        className="text-gold hover:underline"
+                      >
+                        hello@enchantedparkpickups.com
+                      </a>
+                    </p>
+                  )}
                 </div>
               </>
             )}

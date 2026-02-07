@@ -96,6 +96,20 @@ export async function POST(request: NextRequest) {
       if (requestAssignError) {
         console.error('Error assigning requests:', requestAssignError);
       }
+
+      // Also link the request_items to the trip so the detail page can show them
+      const { error: itemAssignError } = await supabase
+        .from('request_items')
+        .update({
+          shopping_trip_id: trip.id,
+          trip_status: 'assigned',
+          updated_at: new Date().toISOString(),
+        })
+        .in('request_id', request_ids);
+
+      if (itemAssignError) {
+        console.error('Error assigning request items to trip:', itemAssignError);
+      }
     }
 
     return NextResponse.json({ trip });

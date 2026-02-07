@@ -59,22 +59,23 @@ export async function PATCH(
       return NextResponse.json({ release: data });
     }
 
-    // Handle full updates
+    // Handle full updates - build update object from provided fields
+    const updateData: Record<string, unknown> = {};
+    const allowedFields = [
+      'title', 'description', 'image_url', 'park', 'category',
+      'price_estimate', 'is_limited_edition', 'is_featured',
+      'ai_tags', 'ai_demand_score', 'location',
+      'projected_release_date', 'actual_release_date', 'sold_out_date',
+    ];
+    for (const field of allowedFields) {
+      if (field in body) {
+        updateData[field] = body[field];
+      }
+    }
+
     const { data, error } = await supabase
       .from('new_releases')
-      .update({
-        title: body.title,
-        description: body.description,
-        image_url: body.image_url,
-        park: body.park,
-        category: body.category,
-        price_estimate: body.price_estimate,
-        is_limited_edition: body.is_limited_edition,
-        is_featured: body.is_featured,
-        ai_tags: body.ai_tags,
-        ai_demand_score: body.ai_demand_score,
-        location: body.location,
-      })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();

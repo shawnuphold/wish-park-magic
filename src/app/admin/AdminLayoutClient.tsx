@@ -27,9 +27,11 @@ import {
   Download,
   MapPin,
   Search,
+  BarChart3,
 } from 'lucide-react';
 import { InstallBanner } from '@/components/InstallBanner';
 import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
+import { Toaster } from '@/components/ui/toaster';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -44,6 +46,7 @@ const navigation = [
   { name: 'Tools', href: '/admin/tools', icon: Wrench },
   { name: 'New Releases', href: '/admin/releases', icon: Sparkles },
   { name: 'Inventory', href: '/admin/inventory', icon: ShoppingBag },
+  { name: 'Reports', href: '/admin/reports/payments', icon: BarChart3 },
   { name: 'Notifications', href: '/admin/notifications', icon: Bell },
   { name: 'Settings', href: '/admin/settings', icon: Settings },
 ];
@@ -217,6 +220,7 @@ export default function AdminLayoutClient({ children, user }: AdminLayoutClientP
       {/* Mobile Bottom Navigation */}
       <MobileNav />
       <QuickActionFab />
+      <Toaster />
     </div>
   );
 }

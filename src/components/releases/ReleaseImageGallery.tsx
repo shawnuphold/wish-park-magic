@@ -86,6 +86,14 @@ export function ReleaseImageGallery({
     setCurrentIndex((prev) => (prev - 1 + sortedImages.length) % sortedImages.length);
   };
 
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.target as HTMLImageElement;
+    if (!img.dataset.fallback) {
+      img.dataset.fallback = 'true';
+      img.src = '/images/no-image-placeholder.png';
+    }
+  };
+
   // Single image display
   if (sortedImages.length === 1) {
     const image = sortedImages[0];
@@ -99,6 +107,7 @@ export function ReleaseImageGallery({
             src={image.url}
             alt=""
             className="w-full h-full object-cover rounded-lg"
+            onError={handleImageError}
           />
           {showBadges && (
             <Badge className={`absolute bottom-2 left-2 ${SOURCE_CONFIG[image.source].color}`}>
@@ -122,6 +131,7 @@ export function ReleaseImageGallery({
               src={image.url}
               alt=""
               className="w-full h-auto max-h-[80vh] object-contain"
+              onError={handleImageError}
             />
             {image.caption && (
               <p className="text-white text-center p-4">{image.caption}</p>
@@ -149,6 +159,7 @@ export function ReleaseImageGallery({
               src={image.url}
               alt=""
               className="w-full h-full object-cover rounded-lg group-hover:opacity-90 transition-opacity"
+              onError={handleImageError}
             />
             {showBadges && (
               <Badge className={`absolute bottom-1 left-1 text-xs ${SOURCE_CONFIG[image.source].color}`}>
@@ -201,6 +212,7 @@ export function ReleaseImageGallery({
             src={sortedImages[currentIndex].url}
             alt=""
             className="w-full h-auto max-h-[80vh] object-contain"
+            onError={handleImageError}
           />
 
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4">
@@ -272,6 +284,13 @@ export function ReleaseImage({
       src={imageUrl}
       alt=""
       className={`object-cover ${className}`}
+      onError={(e) => {
+        const img = e.target as HTMLImageElement;
+        if (!img.dataset.fallback) {
+          img.dataset.fallback = 'true';
+          img.src = '/images/no-image-placeholder.png';
+        }
+      }}
     />
   );
 }

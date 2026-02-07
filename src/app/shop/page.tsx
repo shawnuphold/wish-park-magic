@@ -38,7 +38,7 @@ export default function ShopPage() {
     setIsLoading(true);
     try {
       // Fetch from unclaimed_inventory table via API
-      const response = await fetch('/api/shop/inventory');
+      const response = await fetch('/api/shop/inventory', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         setProducts(data.items || []);
@@ -126,10 +126,11 @@ export default function ShopPage() {
                 >
                   <div className="relative aspect-square overflow-hidden">
                     <img
-                      src={product.image}
+                      src={product.image || '/images/no-image-placeholder.png'}
                       alt={product.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).src = '/images/no-image-placeholder.png'; }}
                     />
                     <div className="absolute top-3 left-3">
                       <ParkBadge park={product.park as 'disney' | 'universal' | 'seaworld'} size="sm" />

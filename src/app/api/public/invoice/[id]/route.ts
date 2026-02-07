@@ -42,6 +42,10 @@ export async function GET(
         paid_at,
         due_date,
         notes,
+        cc_fee_enabled,
+        cc_fee_percentage,
+        cc_fee_amount,
+        paypal_invoice_id,
         request:requests!invoices_request_id_fkey(
           id,
           customer:customers(name, email)

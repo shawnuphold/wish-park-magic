@@ -204,9 +204,12 @@ export default function NewInvoicePage() {
   // Add new item
   function addItem() {
     if (!newItem.name) return;
+    // Auto-calculate tax at 6.5% of item subtotal
+    const autoTax = Math.round((newItem.quantity || 1) * (newItem.unit_price || 0) * 0.065 * 100) / 100;
     const item: InvoiceItem = {
       ...newItem,
       id: `temp-${Date.now()}`,
+      tax_amount: autoTax,
     };
     setItems([...items, item]);
     setNewItem(defaultItem);
@@ -216,7 +219,10 @@ export default function NewInvoicePage() {
   // Update item
   function updateItem() {
     if (!editingItem) return;
-    setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
+    // Auto-calculate tax at 6.5% of item subtotal
+    const autoTax = Math.round((editingItem.quantity || 1) * (editingItem.unit_price || 0) * 0.065 * 100) / 100;
+    const updatedItem = { ...editingItem, tax_amount: autoTax };
+    setItems(items.map(i => i.id === updatedItem.id ? updatedItem : i));
     setEditingItem(null);
     setShowEditDialog(false);
   }
@@ -802,13 +808,15 @@ export default function NewInvoicePage() {
             <p className="text-sm font-medium">Fees (optional)</p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Tax ($)</Label>
+                <Label>Tax (6.5% auto)</Label>
                 <Input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={newItem.tax_amount || ''}
-                  onChange={(e) => setNewItem({ ...newItem, tax_amount: parseFloat(e.target.value) || 0 })}
+                  value={(Math.round((newItem.quantity || 1) * (newItem.unit_price || 0) * 0.065 * 100) / 100) || ''}
+                  readOnly
+                  className="bg-muted"
+                  title="Auto-calculated: subtotal × 6.5%"
                 />
               </div>
               <div className="space-y-2">
@@ -913,13 +921,15 @@ export default function NewInvoicePage() {
               <p className="text-sm font-medium">Fees</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Tax ($)</Label>
+                  <Label>Tax (6.5% auto)</Label>
                   <Input
                     type="number"
                     step="0.01"
                     min="0"
-                    value={editingItem.tax_amount}
-                    onChange={(e) => setEditingItem({ ...editingItem, tax_amount: parseFloat(e.target.value) || 0 })}
+                    value={(Math.round((editingItem.quantity || 1) * (editingItem.unit_price || 0) * 0.065 * 100) / 100) || ''}
+                    readOnly
+                    className="bg-muted"
+                    title="Auto-calculated: subtotal × 6.5%"
                   />
                 </div>
                 <div className="space-y-2">
